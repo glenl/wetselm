@@ -1,0 +1,21 @@
+= Wetselm Reference
+:toc:
+:toclevels: 2
+
+:icons: font
+:imagesdir: ../images
+:stem: latexmath
+
+include::overview.adoc[]
+
+include::Main.adoc[]
+
+include::UI.adoc[]
+
+include::Wets.adoc[]
+
+include::Util.adoc[]
+
+[index]
+
+== Index

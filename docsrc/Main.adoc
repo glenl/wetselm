@@ -1,0 +1,1577 @@
+== Main module
+
+Elm programming dictates the use of a fair number of packages and instead of
+sprinkling the import statements throughout this section they are presented
+here so that function and type documentation is more readable.
+
+The https://package.elm-lang.org/packages/mdgriffith/elm-animator/latest/[elm-animator]
+package has been chosen for animation.
+
+[source,haskell]
+----
+<<main-imports>>=
+import Animator
+import Time
+----
+
+Here we import all of the
+https://package.elm-lang.org/packages/orus-io/elm-nats/latest/[elm-nats]
+packages needed for web socket communication.
+The `Random` package is here because it is used during <<main-init,init>>.
+
+[source,haskell]
+----
+<<main-imports>>=
+import Nats
+import Nats.Config
+import Nats.Effect
+import Nats.Events
+import Nats.PortsAPI
+import Nats.Protocol
+import Nats.Socket
+import Nats.Sub
+import Random
+----
+
+https://package.elm-lang.org/packages/mdgriffith/elm-ui/latest/[elm-ui] is
+used for layout and UI design.
+
+[source,haskell]
+----
+<<main-imports>>=
+import Element as E
+import Element.Background as Background
+import Element.Border as Border
+import Color
+----
+
+Using https://package.elm-lang.org/packages/orus-io/elm-orus-ui/latest/[elm-orus-ui],
+a UI toolkit modeled after the Material Design System, provides reasonable
+theme coloring without too much hassle.
+
+[source,haskell]
+----
+<<main-imports>>=
+import OUI.Button as Button
+import OUI.Material as Material
+import OUI.Material.Color
+import OUI.Material.Theme
+import OUI.Text as Text
+----
+
+For animated graphics, structured vector graphics (SVG) are employed.
+[source,haskell]
+----
+<<main-imports>>=
+import Svg exposing (Svg)
+import Svg.Attributes as SvgA
+----
+
+
+NOTE:: Not all links for packages used in this application are annotated in
+this document. Please peruse the absolute source, the local `elm.json` file,
+for every package used. All elm packages can be found in the
+https://package.elm-lang.org/[Elm package catalog].
+
+(((Main,port module)))
+
+Our application communicates with the `WETS` model using `NATS`, which is
+accomplished with web sockets. This is fairly well hidden from us but the
+first order of business is to indicate to `elm` that we will be expecting a
+port to be set up in the `index.html` file by declaring `Main` a port module.
+Note that only a single function is exposed by the `Main` module.
+
+(((Main,port module)))
+[source,haskell]
+----
+<<main-module>>=
+port module Main exposing (main)
+----
+
+This is an `elm` browser document which requires us to declare various
+functions that will inform the architecture how it is going to deal with the
+state (`Model`) of our application.
+
+<<main-view,view>>:: The assembly of the graphical parts and their layout.
+<<main-init,init>>:: Initialization of the model
+<<main-update,update>>:: When messages arrive, they are handled here. For a NATS
+  application this function has a wrapper to check to see if a message arrived
+  on the port before calling into the proper update function.
+<<main-subscriptions,subscriptions>>:: Look here to see how we subscribe to NATS
+  messages and animation timers.
+
+Think of this in this way. The `update` function is, literally, where all the
+action takes place. Any message defined on the `Model` must be accounted for
+in `update`. Once updated, the `view` function is called to read the DOM
+hierarchy and make sure any graphical updates are made.
+
+`wetselm` will need the following packages as a minimum to accomplish this.
+
+(((Main,imports)))
+
+[source,haskell]
+----
+<<main-imports>>=
+import Browser
+import Wets
+import UI
+import Util
+----
+
+The main entry point is called `main` in this module and describes a jump
+table telling the elm run-time how the `Browser` is built.
+
+[source,haskell]
+----
+<<main-functions>>=
+main : Program { now : Int } Model Msg
+main =
+    Browser.document
+        { view = view
+        , init = init
+        , update = wrappedUpdate
+        , subscriptions = subscriptions
+        }
+----
+
+A _wrapped_ update is used so the NATS messages arriving can be inserted into
+the _update_ functionality. Take a look at the
+<<main-wrapped-update,wrappedUpdate>> function for more detail.
+
+The <<main-subscriptions,subscriptions>> function is necessary for both
+message handling and animation.
+
+
+=== Model [[main-model]]
+
+The `Model` type alias is used within the Elm architecture to declare the
+state of the application in record form.
+
+(((Main,type,Model)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias Model =
+    { nats : Nats.State String Msg
+    , socket : Nats.Socket.Socket
+    , serverInfo : Maybe Nats.Protocol.ServerInfo
+    , actuatorStates : Animator.Timeline (Dict Id ActuatorState)
+    , chamberStates : Animator.Timeline (Dict Id ChamberState)
+    , vesselStates : Animator.Timeline (Dict Id TransitState)
+    , activeVessels : VesselDict
+    , vesselCount : Int
+    , message : String
+    }
+----
+
+For NATS communication we need the `nats`, `socket`, and `serverInfo`
+elements. The `actuator-`, `chamber-`, and `vessel-` `States` declare the
+timelines for animation. The `activeVessels` dictionary helps track the
+transit steps, `vesselCount` is instrumental in vessel naming, and `message`
+is used for displaying informational messages.
+
+See the <<main-init,init>> function for how this `model` is initialized.
+
+We use a lot of dictionaries so the import is directed to also expose the `Dict`
+type to improve code readability.
+
+[source,haskell]
+----
+<<main-imports>>=
+import Dict exposing (Dict)
+----
+
+==== init [[main-init]]
+
+This function is directed here from the <<main-main,main>> function and
+initializes all elements of the <<main-model,Model>>.
+
+* The _flags_ argument is populated in the `index.html` file as the current
+  date and is used as a random seed for initializing NATS.
+
+* Motor-driven animations (valves and gates) are initialized here to their
+  population definitions (see the WETS documentation). Note that the naming
+  here reflects the naming in the population as well.
+
+* The center chamber is animated with the `chamberStates` element.
+
+* The vessel states are initialized to an empty dictionary.
+
+* Messages are initialized to an empty string.
+
+The NATS socket is defined to address the web-socket address defined
+in the `server.config` file.
+
+NOTE: There is only one `Chamber` even though the use of a dictionary suggests
+otherwise. This was done for future cases with multiple chambers.
+
+(((Main,functions,init)))
+
+[source,haskell]
+----
+<<main-functions>>=
+init : { now : Int } -> ( Model, Cmd Msg )
+init flags =
+    let
+        nats : Nats.State String Msg
+        nats = Nats.init (Random.initialSeed flags.now)
+             (Time.millisToPosix flags.now)
+    in
+    ( { actuatorStates =
+            Animator.init <|
+                Dict.fromList
+                    [ ( "Valve-M01", Closed )
+                    , ( "Valve-M02", Closed )
+                    , ( "Gate-M01", Closed )
+                    , ( "Gate-M02", Closed )
+                    ]
+      , chamberStates =
+            Animator.init <|
+                Dict.fromList [ ( "Chamber-01", High ) ]
+      , vesselStates = Animator.init Dict.empty
+      , nats = nats
+      , socket = Nats.Socket.new "0" "ws://localhost:8087"
+      , serverInfo = Nothing
+      , vesselCount = 0
+      , activeVessels = Dict.empty
+      , message = ""
+      }
+    , Cmd.none
+    )
+----
+
+CAUTION: A design decision has been made with regards to vessels. Their state -- where
+they are located during transit -- and the vessel instance are managed
+separately. This is probably more efficient for animating but, mostly, this
+decision is about navigating the difficulty of a dynamic entity in the
+`Animator` construct.
+
+
+==== ChamberState [[main-chamber-state]]
+
+This application has a single animated chamber and it has two states.
+
+(((Main,types,ChamberState)))
+
+[source,haskell]
+----
+<<main-types>>=
+type ChamberState
+    = High
+    | Low
+----
+
+This local function provides an association between a `ChamberState` and its
+depth in an SVG glyph. You can thank the SVG coordinate system for any
+confusion about the value for `High` being lower than the value for `Low`.
+
+[source,haskell]
+----
+<<main-functions>>=
+chamberDepth : ChamberState -> Float
+chamberDepth cstate =
+    case cstate of
+        High -> 40.0
+        Low -> 80.0
+----
+
+
+==== ActuatorState [[main-actuator-state]]
+
+Motors (valves and gates) are either `Opened` or `Closed`.
+
+(((Main,types,ActuatorState)))
+
+[source,haskell]
+----
+<<main-types>>=
+type ActuatorState
+    = Opened
+    | Closed
+----
+
+
+.Id [[main-id]]
+
+An `Id` is an alias for a `String`.
+
+(((Main,types,Id)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias Id =
+    String
+----
+
+=== Vessels
+
+==== TransitState [[main-transit-state]]
+
+A `TransitState` defines location milestones in a vessels path through a
+transit lane. Each vessel will have a specific
+<<main-transit-sequence,transit sequence>>
+that it will traverse either down- or up- stream.
+
+.Transit milestones in a vessel's path
+image::chamber-layout.svg[]
+
+* The `*Entry` states are offstage (outside the SVG view) positions and not
+  meant to be directly viewed by the user. This allows an initial animation from
+  offstage to a waiting state.
+
+* The `InChamber*` locations are employed for both vessel and chamber animations.
+
+(((Main,TransitState)))
+
+[source,haskell]
+----
+<<main-types>>=
+type TransitState
+    = AtUpperEntry
+    | AtUpperGate
+    | InChamberHigh
+    | InChamberLow
+    | AtLowerGate
+    | AtLowerEntry
+    | AtSea
+----
+
+==== toPosition [[main-to-position]]
+
+Provide an XY position for each <<main-transit-state,TransitState>>. These
+are SVG positions within a SVG view.
+
+See <<main-anim-vessel,animVessel>> for how this is used.
+
+(((Main,functions,toPosition)))
+
+[source,haskell]
+----
+<<main-functions>>=
+toPosition : TransitState -> Util.Position
+toPosition state =
+    case state of
+        AtUpperEntry ->
+            { x = -70.0, y = chamberDepth High }
+        AtUpperGate ->
+            { x = 100.0, y = chamberDepth High }
+        InChamberHigh ->
+            { x = 300.0, y = chamberDepth High }
+        InChamberLow ->
+            { x = 300.0, y = chamberDepth Low }
+        AtLowerGate ->
+            { x = 500.0, y = chamberDepth Low }
+        AtLowerEntry ->
+            { x = 650.0, y = chamberDepth Low }
+        AtSea ->
+            { x = 0.0, y = 0.0 }
+----
+
+
+==== TransitSequence [[main-transit-sequence]]
+
+
+This is a list of `TransitState` values and used to define a path along
+which a vessel is expected to travel.
+
+(((Main,types,TransitSequence)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias TransitSequence =
+    List TransitState
+----
+
+.downStreamSequence
+A `downStreamSequence` is the sequence a vessel travelling downstream is
+expected to take. Notice how its final move is from the `InChamberLow` state to
+the `AtLowerEntry` state. During animation, this will whisk the vessel image
+offstage right (i.e., it skips over the `AtLowerGate` milestone.)
+
+(((Main,literals,TransitSequence)))
+
+[source,haskell]
+----
+<<main-literals>>=
+downStreamSequence : TransitSequence
+downStreamSequence =
+    [ AtUpperEntry
+    , AtUpperGate
+    , InChamberHigh
+    , InChamberLow
+    , AtLowerEntry
+    ]
+----
+
+.upStreamSequence
+For the `upStreamSequence`, note how the final move is from `InChamberHigh`
+to `AtUpperEntry` to whisk the vessel image offstage left.
+
+[source,haskell]
+----
+<<main-literals>>=
+upStreamSequence : TransitSequence
+upStreamSequence =
+    [ AtLowerEntry
+    , AtLowerGate
+    , InChamberLow
+    , InChamberHigh
+    , AtUpperEntry
+    ]
+----
+
+==== Vessel [[main-vessel]]
+
+A `Vessel` has a <<main-direction,Direction>> and a
+<<main-transit-sequence,TransitSequence>>.
+This will be used later as a value for the
+<<main-vessel-dict,vessel dictionary>>.
+
+(((Main,types,Vessel)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias Vessel =
+    { direction : Util.Direction
+    , sequence : TransitSequence
+    }
+----
+
+==== VesselDict [[main-vessel-dict]]
+
+Declare a type we can use to store `Vessel` objects by name.
+
+(((Main,types,VesselDict)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias VesselDict =
+    Dict Id Vessel
+----
+
+==== nextTransition [[next-transition]]
+
+The path of a Vessel is determined by its
+<<main-transit-sequence,TransitSequence>>.
+The next milestone in a sequence is always at the head of the list. A
+https://package.elm-lang.org/packages/elm/core/latest/Maybe[Maybe] type is
+used here because the sequence could very well be empty, yielding `Nothing`
+from the function.
+
+(((Main,functions,nextTransition)))
+
+[source,haskell]
+----
+<<main-functions>>=
+nextTransition : Id -> VesselDict -> Maybe TransitState
+nextTransition license vdict =
+    Dict.get license vdict
+        |> Maybe.andThen (\v -> List.head v.sequence)
+----
+
+==== adjustSequence [[main-adjust-sequence]]
+
+When the next milestone in a sequence is reached, the front of the list is
+popped off and the <<main-vessel-dict,Vessel's dictionary>> is updated.
+
+(((Main,functions,AdjustSequence)))
+
+[source,haskell]
+----
+<<main-functions>>=
+adjustSequence : Id -> VesselDict -> VesselDict
+adjustSequence license vdict =
+    let
+        pophead : Vessel -> Vessel
+        pophead v =
+            { v | sequence = List.drop 1 v.sequence }
+    in
+    Dict.update license (Maybe.map pophead) vdict
+----
+
+==== newVessel [[main-new-vessel]]
+
+Construct a <<main-vessel,Vessel>> going in a specific direction. This is
+meant to reside as a value in a <<main-vessel-dict,Vessel's dictionary>>.
+
+(((Main,)))
+[source,haskell]
+----
+<<main-functions>>=
+newVessel : Util.Direction -> Vessel
+newVessel dir =
+    { direction = dir
+    , sequence =
+        case dir of
+            Util.Upstream ->
+                upStreamSequence
+
+            Util.Downstream ->
+                downStreamSequence
+    }
+----
+
+
+==== animator [[main-animator]]
+
+The https://package.elm-lang.org/packages/mdgriffith/elm-animator/latest/[elm-animator]
+package dictates that an `Animator` literal needs to be defined.
+These are better described in the package documentation but, briefly, this
+is for telling the animator what timelines are active and how their states are
+accessed.
+
+Each `Timeline` in the <<main-model,Model>> is represented here.
+
+(((Main,literals,animator)))
+
+[source,haskell]
+----
+<<main-literals>>=
+animator : Animator.Animator Model
+animator =
+    Animator.animator
+        |> Animator.watching
+            .actuatorStates
+            (\newActuatorStates model ->
+                { model | actuatorStates = newActuatorStates}
+            )
+        |> Animator.watching
+            .chamberStates
+            (\newChamberStates model ->
+                { model | chamberStates = newChamberStates}
+            )
+        |> Animator.watching
+            .vesselStates
+            (\newVesselStates model ->
+                { model | vesselStates = newVesselStates}
+            )
+----
+
+
+.subscriptions [[main-subscriptions]]
+
+There are two subscriptions to declare,
+
+* Messages arriving on the port will trigger a message to <<main-update,update>>.
+* Animation ticks on the timeline will trigger update as well.
+
+(((main,functions,subscriptions)))
+
+[source,haskell]
+----
+<<main-functions>>=
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ Nats.subscriptions natsConfig model.nats
+        , Animator.toSubscription AnimationRuntimeStep model animator
+        ]
+----
+
+=== Ports
+
+==== natsConfig [[main-nats-config]]
+
+(((main,functions,natsConfig)))
+
+[source,haskell]
+----
+<<main-functions>>=
+port natsSend : Nats.PortsAPI.Send String msg
+port natsReceive : Nats.PortsAPI.Receive String msg
+
+natsConfig : Nats.Config String String Msg
+natsConfig =
+    Nats.Config.string NatsMsg
+        { send = natsSend
+        , receive = natsReceive
+        }
+        |> Nats.Config.withDebug False
+----
+
+
+==== receiveProg [[main-recieve-prog]]
+
+(((main,functions,receiveProg)))
+
+[source,haskell]
+----
+<<main-functions>>=
+receiveProg : Nats.Protocol.Message String -> Msg
+receiveProg natsMessage =
+    ReceiveProg natsMessage.data
+----
+
+==== natsSubscriptions [[main-nats-subscriptions]]
+
+(((main,functions,natsSubscriptions)))
+
+[source,haskell]
+----
+<<main-functions>>=
+natsSubscriptions : Model -> Nats.Sub String Msg
+natsSubscriptions model =
+    Nats.Sub.batch
+        [ Nats.connect
+            (Nats.Socket.connectOptions "Wets UI" "0.1"
+                |> Nats.Socket.withUserPass "test" "test"
+            )
+            model.socket
+            OnSocketEvent
+        , Nats.subscribe "Wets.client" receiveProg
+        ]
+----
+
+==== wrappedUpdate [[main-wrapped-update]]
+
+(((main,functions,wrappedUpdate)))
+
+[source,haskell]
+----
+<<main-functions>>=
+wrappedUpdate : Msg -> Model -> ( Model, Cmd Msg )
+wrappedUpdate msg model =
+    let
+        ( newModel, natsEffect, cmd ) =
+            update msg model
+
+        ( nats, natsCmd ) =
+            Nats.applyEffectAndSub
+                natsConfig
+                natsEffect
+                (natsSubscriptions model)
+                newModel.nats
+    in
+    ( { newModel | nats = nats }
+    , Cmd.batch [ cmd, natsCmd ]
+    )
+----
+
+=== update [[main-update]]
+
+
+==== Msg [[main-msg]]
+
+A core part of the Elm Architecture, the `Msg` type defines the actions that
+can change the state `model`. For each `Msg` there will be a corresponding
+<<main-update,update>> case. Literate programming allows us to itemize these
+messages next to their update functionality.
+
+(((Main,types,Msg)))
+
+[source,haskell]
+----
+<<main-types>>=
+type Msg
+    <<main-messages>>
+----
+
+[source,haskell]
+----
+<<main-functions>>=
+update : Msg -> Model -> ( Model, Nats.Effect String Msg, Cmd Msg )
+update msg model =
+    case msg of
+        <<main-update-case>>
+----
+
+NOTE: The return value includes a `Nats.Effect` which is a departure from the
+standard Elm architecture due to the wrapped update (which got us here.)
+
+
+==== AnimationRuntimeStep [[main-animator-runtime-step]]
+
+This is the animation frame tick which is used to update the
+<<main-animator,Animator>> instance.
+
+[source,haskell]
+----
+<<main-messages>>=
+= AnimationRuntimeStep Time.Posix
+----
+
+(((main,functions,update)))
+
+[source,haskell]
+----
+<<main-update-case>>=
+AnimationRuntimeStep tick ->
+    ( Animator.update tick animator model
+    , Nats.Effect.none
+    , Cmd.none
+    )
+----
+
+
+==== MoveVessel [[main-move-vessel]]
+
+[source,haskell]
+----
+<<main-messages>>=
+| MoveVessel Id Int
+----
+
+Move a vessel from its current position to the next position in its sequence.
+The move will take the given amount of milliseconds. There is very little
+error recovery here because we expect the state transition to be correct from
+the WETS model.
+
+Both `vesselState` and `activeVessels` dictionaries are updated to reflect the
+move to the new `TransitState`.
+
+If the next state in the sequence is at either entry point it means that the
+vessel is completing its transit through the lock system. This will
+precipitate a `VesselFinished` message being delivered for this vessel after
+it completes its move.
+
+[source,haskell]
+----
+<<main-update-case>>=
+MoveVessel license millis ->
+    case nextTransition license model.activeVessels of
+        Nothing ->
+            ( { model
+                | message =
+                    "handleVessel: No next transit state for " ++ license
+              }
+            , Nats.Effect.none
+            , Cmd.none
+            )
+
+        Just nextState ->
+            let
+                setVesselState : TransitState -> Dict Id TransitState
+                setVesselState newState =
+                    Dict.insert license newState
+                    <| Animator.current model.vesselStates
+            in
+            ( { model
+                | vesselStates =
+                    Animator.go (Animator.millis <| toFloat millis)
+                        (setVesselState nextState)
+                        model.vesselStates
+                , activeVessels =
+                    adjustSequence license model.activeVessels
+              }
+            , Nats.Effect.none
+            , if nextState == AtLowerEntry || nextState == AtUpperEntry
+              then
+                  Delay.after millis <| VesselFinished license
+              else
+                  Cmd.none
+            )
+----
+
+
+==== VesselFinished [[main-vessel-finished]]
+
+[source,haskell]
+----
+<<main-messages>>=
+| VesselFinished Id
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+VesselFinished id ->
+    ( { model
+          | activeVessels = Dict.remove id model.activeVessels
+          , vesselStates =
+              Animator.go Animator.immediately
+              (Dict.remove id <| Animator.current model.vesselStates)
+              model.vesselStates
+         , message = "Finished \"" ++ id ++ "\""
+      }
+    , Nats.Effect.none
+    , Cmd.none
+    )
+----
+
+
+==== VesselPassedGate [[main-vessel-passed-gate]]
+
+[source,haskell]
+----
+<<main-messages>>=
+| VesselPassedGate Id
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+VesselPassedGate id ->
+    ( model
+    , Nats.publish "Wets.1" <| Wets.vesselPassedGate id
+    , Cmd.none
+    )
+----
+
+
+==== FlowComplete [[main-flow-complete]]
+
+[source,haskell]
+----
+<<main-messages>>=
+| FlowComplete Id
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+FlowComplete id ->
+    ( model
+    , Nats.publish "Wets.1" <| Wets.flowEqualized id
+    , Cmd.none
+    )
+----
+
+
+==== ActuatorMoveDone [[main-actuator-move-done]]
+
+[source,haskell]
+----
+<<main-messages>>=
+| ActuatorMoveDone Id
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+ActuatorMoveDone id ->
+    ( model
+    , Nats.publish "Wets.1" <| Wets.actuatorMoveDone id
+    , Cmd.none
+    )
+----
+
+
+==== StartVessel [[main-start-vessel]]
+
+[source,haskell]
+----
+<<main-messages>>=
+| StartVessel Util.Direction
+----
+
+Start a vessel on its <<main-transit-sequence,TransitSequence>>.
+
+. A <<main-new-vessel,new Vessel>> is created.
+. A license is assigned to the vessel which will be used as key in the
+<<main-model,activeVessels>> dictionary.
+. The start state is pulled from its `transitSequence`.
+. The start state is inserted into the <<main-animator,animator>> for this
+vessel.
+
+Following that,
+
+* The model is updated with an incremented vessel count.
+* The <<main-animator,vesselStates>> is updated to be at this start state
+  immediately.
+* The active vessels dictionary is updated by purging finished vessels and
+  inserting the new vessel.
+* Notice of the arriving vessel is sent to WETS.
+* The <<main-move-vessel,MoveVessel>> command is sent to
+  <<main-update,update>> after a brief delay.
+
+[source,haskell]
+----
+<<main-update-case>>=
+StartVessel direction ->
+    let
+        vessel : Vessel
+        vessel = newVessel direction
+
+        license : String
+        license = Util.newVesselName model.vesselCount
+
+        startState : TransitState
+        startState =
+            vessel.sequence |> List.head |> Maybe.withDefault AtSea
+
+        startVessel : Dict Id TransitState
+        startVessel =
+            Animator.current model.vesselStates
+                |> Dict.insert license startState
+    in
+    ( { model
+        | vesselCount = model.vesselCount + 1
+        , vesselStates =
+            Animator.go Animator.immediately
+                startVessel
+                model.vesselStates
+        , activeVessels =
+            model.activeVessels
+                |> Dict.insert license
+                    { vessel | sequence = List.drop 1 vessel.sequence }
+        , message =
+            "Starting vessel \"" ++ license ++ "\""
+      }
+    , Nats.publish "Wets.1" <|
+        Wets.newVessel license <|
+            Util.toString direction
+    , Delay.after 100 <| MoveVessel license 1000
+    )
+----
+
+
+==== NatsMsg
+
+When a `NatsMsg` arrives, the `NATS` model is updated which may result in
+a message delivery to our model.
+
+[source,haskell]
+----
+<<main-messages>>=
+| NatsMsg (Nats.Msg String Msg)
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+NatsMsg natsMsg ->
+    let
+        ( nats, natsCmd ) =
+            Nats.update natsConfig natsMsg model.nats
+    in
+    ( { model | nats = nats }
+    , Nats.Effect.none
+    , natsCmd
+    )
+----
+
+
+
+==== OnSocketEvent
+
+[source,haskell]
+----
+<<main-messages>>=
+| OnSocketEvent Nats.Events.SocketEvent
+----
+
+Update the model's `serverInfo` structure on a socket event.
+There are a number of events here that are ignored.
+
+[source,haskell]
+----
+<<main-update-case>>=
+OnSocketEvent event ->
+    ( { model
+        | serverInfo =
+            case event of
+                Nats.Events.SocketOpen info ->
+                    Just info
+                _ ->
+                    Nothing
+      }
+    , Nats.Effect.none
+    , Cmd.none
+    )
+----
+
+
+==== ReceiveProg
+
+This message arrives when a `Wets.client` message is received via NATS, the
+handling of which is deferred to the <<main-wets-hander,wetsHandler>>
+function.
+
+[source,haskell]
+----
+<<main-messages>>=
+| ReceiveProg String
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+ReceiveProg data ->
+    let
+        ( new_model, cmd ) = wetsHandler data model
+    in
+    ( new_model
+    , Nats.Effect.none
+    , cmd
+    )
+----
+
+
+==== wetsHandler [[main-wets-handler]]
+
+Handle incoming `Wets.client` messages based on their
+<<wets-message-type,messageType>> so that,
+
+<<main-handle-motor,handleMotor>>:: handles `Motor` messages.
+<<main-handle-flow,handleFlow>>:: for `Flow` messages.
+<<main-handle-vessel,handleVessel>>:: for `Vessel` messages.
+
+To accomplish this, `Json.Decode` is needed for the decode function but an
+appropriate decoder from the `Wets` module is used for the hard work.
+
+[source,haskell]
+----
+<<main-imports>>=
+import Json.Decode as Decode
+----
+
+(((main,functions,wetsHandler)))
+
+[source,haskell]
+----
+<<main-functions>>=
+wetsHandler : String -> Model -> ( Model, Cmd Msg )
+wetsHandler data model =
+    case Wets.messageType data of
+        Just Wets.MotorMsg ->
+            case Decode.decodeString Wets.motorDecoder data of
+                Ok cmd -> handleMotor model cmd
+                Err e ->
+                    ( { model | message = Decode.errorToString e }
+                    , Cmd.none
+                    )
+
+        Just Wets.FlowMsg ->
+            case Decode.decodeString Wets.flowDecoder data of
+                Ok cmd -> handleFlow model cmd
+                Err e ->
+                    ( { model | message = Decode.errorToString e }
+                    , Cmd.none
+                    )
+
+        Just Wets.VesselMsg ->
+            case Decode.decodeString Wets.vesselDecoder data of
+                Ok cmd -> handleVessel model cmd
+                Err e ->
+                    ( { model | message = Decode.errorToString e }
+                    , Cmd.none
+                    )
+
+        Nothing ->
+            ( model, Cmd.none )
+----
+
+
+==== handleVessel [[main-handle-vessel]]
+
+(((main,functions,handleVessel)))
+
+There is only a single vessel command -- MOVE -- so this results in a
+<<main-move-vessel,MoveVessel>> command. Vessels are instructed to MOVE when
+they are ready to pass through a gate so the returning command is set as a
+sequence to send the appropriate message when it completes.
+
+
+[source,haskell]
+----
+<<main-functions>>=
+handleVessel : Model -> Wets.VesselCommand -> ( Model, Cmd Msg )
+handleVessel model cmd =
+    ( model
+    , Delay.sequence
+        [ ( 0, MoveVessel cmd.license 1000 )
+        , ( 1000, VesselPassedGate cmd.license )
+        ]
+    )
+----
+
+
+(((main,imports,Delay)))
+
+[source,haskell]
+----
+<<main-imports>>=
+import Delay
+----
+
+==== handleFlow [[main-handle-flow]]
+
+(((main,functions,handleFlow)))
+
+This command is received a valve has been opened that will result in
+manipulating the level of water in a chamber. There may or may not be vessels
+in the chamber.
+
+The name of the sensor is used to derive the target `Chamber-` and `Transit-`
+states. The target chamber state (`cstate`) is used in the chamber animation.
+The target transit state (`tstate`) is used to build a list of (possible)
+vessel moves that are sequenced after the model is updated.
+
+The chamber move takes a fixed amount of time after which the response message
+is queued to run.
+
+[source,haskell]
+----
+<<main-functions>>=
+handleFlow : Model -> Wets.FlowCommand -> ( Model, Cmd Msg )
+handleFlow model cmd =
+    let
+        setChamber : Id -> ChamberState -> Dict Id ChamberState
+        setChamber id newState =
+            Dict.insert id newState <|
+                Animator.current model.chamberStates
+
+        targetStates : String -> (ChamberState, TransitState)
+        targetStates sname =
+            if sname == "Sensor-F01"
+            then ( Low,  InChamberHigh )
+            else ( High, InChamberLow )
+
+        (cstate, tstate) = targetStates cmd.name
+
+        chamberMoves : List ( Int, Msg )
+        chamberMoves =
+            Animator.current model.vesselStates
+                |> Dict.filter (\_ s -> s == tstate)
+                |> Dict.foldl
+                    (\vid _ -> List.append [ ( 0, MoveVessel vid 2000 ) ])
+                    []
+    in
+    ( { model
+        | chamberStates =
+            Animator.go (Animator.millis 2000)
+                (setChamber "Chamber-01" cstate)
+                model.chamberStates
+      }
+    , Delay.sequence <|
+        chamberMoves
+            ++ [ ( 2000, FlowComplete cmd.name ) ]
+    )
+----
+
+
+==== handleMotor [[main-handle-motor]]
+
+(((main,functions,handleMotor)))
+
+[source,haskell]
+----
+<<main-functions>>=
+handleMotor : Model -> Wets.MotorCommand -> ( Model, Cmd Msg )
+handleMotor model cmd =
+    let
+        opAsState : String -> ActuatorState
+        opAsState op =
+            if op == "RUN_IN" then
+                Closed
+            else
+                Opened
+
+        setActuator : Id -> ActuatorState -> Dict Id ActuatorState
+        setActuator id newState =
+            Dict.insert id newState
+                 <| Animator.current model.actuatorStates
+
+        actState : ActuatorState
+        actState =
+            opAsState cmd.operation
+    in
+    ( { model
+        | actuatorStates =
+            Animator.go (Animator.millis 1000)
+                (setActuator cmd.name actState)
+                model.actuatorStates
+      }
+    , Delay.after 1000 <| ActuatorMoveDone cmd.name
+    )
+----
+
+=== View
+
+When any graphical bit changes in the model, the `view` function is called to
+change the graphics presented to the user. This might appear to be an immense
+amount of work in a UI with animated graphics, but the work being done here
+updates the Domain Object Model (DOM) and then ... magic happens to update the
+screen.
+
+Because of all the layout work a view function can be quite large so it is
+broken out into a number of parts.
+
+<<main-view,view>>:: The main entry point for view functionality.
+<<main-locks,locks>>:: The graphical depiction of a canal lock.
+<<main-start-panel>>:: The left-side button controls.
+<<main-info-panel>>:: The ServerInfo panel that has morphed to a simple
+Offline/Online graphic.
+
+==== view [[main-view]]
+
+(((main,functions,view)))
+
+[source,haskell]
+----
+<<main-functions>>=
+view : Model -> Browser.Document Msg
+view model =
+    { title = "Sim Proto"
+    , body =
+        [ UI.layout <|
+            E.column
+                [ E.paddingEach
+                    { top = 40, right = 0, bottom = 0, left = 80 }
+                ]
+                [ E.row
+                    [ E.spacing 20
+                    , E.paddingEach { top = 0, right = 0, bottom = 0, left = 30} ]
+                    [ Text.displayMedium "WETS"
+                        |> Material.text UI.theme
+                    ]
+                , E.row
+                    [ E.paddingEach
+                        { top = 20, right = 0, bottom = 60, left = 20 }
+                    , E.spacing 20
+                    ]
+                    [ startPanel
+                    , E.el
+                        [ E.width <| E.px 600
+                        , E.height <| E.px 200
+                        ] <| locks model
+                    ]
+                , E.row
+                    [ E.paddingEach
+                        { top = 0, right = 0, bottom = 0, left = 20 }
+                    , E.spacing 20
+                    ]
+                    [ infoPanel model
+                    , Text.bodyMedium model.message
+                        |> Material.text UI.theme
+                    ]
+                ]
+        ]
+    }
+----
+
+
+
+==== locks [[main-locks]]
+
+The `locks` function composes an SVG view of a canal lock containing,
+
+* two animated gates
+* two animated valves
+* an animated center chamber
+
+SVG is z-layered. After defining a 600X200 pixel view the components are built
+up within that.
+
+* A light-colored background _sky_.
+* The chambers are filled rectangles to represent water, the center one is
+  animated.
+* The gate is a darker rectangle whose opacity is animated.
+* The valve is a hub and vane combination in which the vane is animated.
+* Finally the vessels are animated on top of all that.
+
+(((main,functions,locks)))
+
+[source,haskell]
+----
+<<main-functions>>=
+locks : Model -> E.Element msg
+locks model =
+    Svg.svg
+        [ SvgA.viewBox "0 0 600 200"
+        , SvgA.width "600"
+        , SvgA.height "200"
+        ]
+        (List.append
+            [ Svg.rect
+                [ SvgA.width "600"
+                , SvgA.height "200"
+                , SvgA.x "0"
+                , SvgA.y "0"
+                , SvgA.fill <| Color.toCssString Color.lightGray
+                ]
+                []
+            , UI.chamber 0 40
+            , animChamber "Chamber-01" model 200
+            , UI.chamber 400 80
+            , animGate "Gate-M02" model 194 34
+            , UI.hub 200 170
+            , animVane "Valve-M02" model 200 170
+            , animGate "Gate-M01" model 394 34
+            , UI.hub 400 170
+            , animVane "Valve-M01" model 400 170
+            ]
+         <| allVessels model
+        )
+        |> E.html
+----
+
+
+
+==== startPanel [[main-start-panel]]
+
+This forms the start controls that can introduce vessels into the system.
+Keypresses are directed to the <<main-start-vessel,StartVessel>> message.
+
+(((main,functions,startPanel)))
+
+[source,haskell]
+----
+<<main-functions>>=
+startPanel : E.Element Msg
+startPanel =
+    let
+        scheme : OUI.Material.Color.Scheme
+        scheme =
+            OUI.Material.Theme.colorscheme UI.theme
+    in
+    E.column
+        [ Border.rounded 12
+        , Border.color <|
+            OUI.Material.Color.toElementColor scheme.outlineVariant
+        , Border.width 1
+        , Background.color <|
+            OUI.Material.Color.toElementColor scheme.primaryContainer
+        , E.padding 20
+        , E.spacing 20
+        , E.height E.fill
+        ]
+        [ "Start Vessel"
+            |> Text.bodyMedium
+            |> Material.text UI.theme
+        , Button.new "Downstream"
+            |> Button.onClick (StartVessel Util.Downstream)
+            |> Material.button UI.theme []
+        , Button.new "Upstream"
+            |> Button.onClick (StartVessel Util.Upstream)
+            |> Material.button UI.theme [ E.width E.fill ]
+        ]
+----
+
+
+
+==== infoPanel [[main-info-panel]]
+
+This shows the state of the NATS connection.
+
+(((main,functions,infoPanel)))
+
+[source,haskell]
+----
+<<main-functions>>=
+infoPanel : Model -> E.Element msg
+infoPanel model =
+    let
+        isOnline : Bool
+        isOnline =
+            case model.serverInfo of
+                Nothing -> False
+                Just _ -> True
+
+        panelAttr : List (E.Attribute msg)
+        panelAttr =
+            if isOnline then
+                [ Background.color <| E.rgb255 0x1b 0x82 0x2f
+                ]
+            else
+                [ Background.color <|
+                    OUI.Material.Color.toElementColor scheme.errorContainer
+                ]
+
+        scheme : OUI.Material.Color.Scheme
+        scheme = OUI.Material.Theme.colorscheme UI.theme
+    in
+    E.el
+        ([ Border.rounded 10
+         , Border.color <|
+            OUI.Material.Color.toElementColor scheme.outlineVariant
+         , Border.width 1
+         , E.paddingEach { left = 18, top = 6, right = 10, bottom = 6 }
+         , E.width <| E.px 100
+         ] ++ panelAttr
+        )
+    <|
+        Material.text UI.theme <|
+            Text.bodyMedium <|
+                if isOnline then
+                    "Online"
+
+                else
+                    "Offline"
+----
+
+=== Animation
+
+The following functions implement animated bits in the <<main-lock,lock>>
+function.
+
+<<main-anim-vane,Vane animation>>:: The moving part of the valve depiction.
+<<main-anim-chamber,Chamber animation>>:: The chamber resized its height to
+simulate filling or draining of a chamber.
+<<main-anim-gate,Gate animation>>:: The gate changes visually when opened or
+closed.
+<<main-all-vessels,Vessels>>:: All active vessels are checked for animation.
+
+
+==== animVane [[main-anim-vane]]
+
+Only the vane of the valve is animated. This makes a quarter circle rotation
+to represent open (π/2) or closed (0).
+
+[source,haskell]
+----
+<<main-functions>>=
+valveValue : ActuatorState -> Float
+valveValue astate =
+    case astate of
+        Opened -> pi / 2.0
+        Closed -> 0.0
+----
+
+This animates a single vane for the actuator with the given `Id`.
+
+(((main,functions,animVane)))
+
+[source,haskell]
+----
+<<main-functions>>=
+animVane : Id -> Model -> Int -> Int -> Svg msg
+animVane id model x y =
+    UI.vane x y
+    <| Animator.linear model.actuatorStates <|
+        \actuatorStates ->
+            Animator.at <|
+                case Dict.get id actuatorStates of
+                    Just astate -> valveValue astate
+                    Nothing -> 0.0
+----
+
+
+
+==== animChamber [[main-anim-chamber]]
+
+Animating a chamber is a matter of manipulating the Y coordinate in the
+appropriate direction.
+
+* The `Id` of the chamber is passed in so we can find it in our chamber state
+  dictionary
+
+* The `Model` is needed since that holds the `chamberStates`.
+
+* The fixed `xoffset` is passed in.
+
+* The <<main-chamber-state,chamber depth>> is given by the depth associated with the state.
+
+(((main,functions,animChamber)))
+
+[source,haskell]
+----
+<<main-functions>>=
+animChamber : Id -> Model -> Int -> Svg msg
+animChamber id model xoffset =
+    UI.chamber xoffset
+    <| round
+    <| Animator.linear model.chamberStates <|
+         \chamberStates ->
+             Animator.at <|
+                 case Dict.get id chamberStates of
+                     Just cs -> chamberDepth cs
+                     Nothing -> 0.0
+----
+
+
+==== animGate [[main-anim-gate]]
+
+Animating a gate is tricky since the side view will look like a large slab
+and the vessel will be hidden behind it as it passes through.
+Here the opacity of the gate is animated so it transitions from
+fully opaque to almost transparent.
+
+[source,haskell]
+----
+<<main-functions>>=
+gateOpacity : ActuatorState -> Float
+gateOpacity astate =
+    case astate of
+        Opened -> 0.25
+        Closed -> 1.0
+----
+
+(((main,functions,animGate)))
+
+[source,haskell]
+----
+<<main-functions>>=
+animGate : Id -> Model -> Int -> Int -> Svg msg
+animGate id model x y =
+    UI.gate x y
+    <| Animator.linear model.actuatorStates <|
+        \actuatorStates ->
+            Animator.at <|
+                case Dict.get id actuatorStates of
+                    Just gstate -> gateOpacity gstate
+                    Nothing -> 0.0
+----
+
+
+==== animVessel [[main-anim-vessel]]
+
+Vessel animation is interesting because it moves in both X and Y. All the
+animations are linear and, for some reason, this `xy` animator has some easing
+to it. Since it may be that the vessel being animated is in a chamber with a
+changing water level, this easing is zeroed in `y` to force a linear motion.
+
+(((main,functions,animVessel)))
+
+[source,haskell]
+----
+<<main-functions>>=
+animVessel : Id -> Model -> Util.Direction -> Svg msg
+animVessel id model direction =
+    UI.vessel id direction
+    <| Animator.xy model.vesselStates <|
+        \vStates ->
+            let
+                xypos : Util.Position
+                xypos =
+                    Dict.get id vStates
+                        |> Maybe.withDefault AtSea
+                        |> toPosition
+            in
+                { x = Animator.at xypos.x
+                , y = Animator.at xypos.y
+                    |> Animator.leaveSmoothly 0
+                    |> Animator.arriveSmoothly 0
+                }
+----
+
+
+==== allVessels [[main-all-vessels]]
+
+This is a view function for displaying all active vessels.
+
+(((main,functions,allVessels)))
+
+[source,haskell]
+----
+<<main-functions>>=
+allVessels : Model -> List (Svg msg)
+allVessels model =
+    model.activeVessels
+        |> Dict.toList
+        |> List.map
+           (\t -> animVessel (Tuple.first t)
+                model
+                (Tuple.second t).direction)
+----
+
+=== Code Layout
+
+[source,haskell]
+----
+<<Main.elm>>=
+<<main-module>>
+
+<<main-imports>>
+
+<<main-types>>
+
+<<main-literals>>
+
+<<main-functions>>
+----

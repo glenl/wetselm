@@ -2,3 +2,6 @@
 elm-stuff
 # elm-repl generated files
 repl-temp-*
+# asciidoctor stuff
+**/.asciidoctor/
+images/diag-pikchr-*

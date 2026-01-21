@@ -1,0 +1,348 @@
+== Wets messaging helpers
+
+This module contains functions for encoding and decoding JSON messages
+directed to and from the `wets-s` service.
+
+There are three incoming `Wets.client` message types that need to be
+addressed.
+
+<<wets-motor-command,Motor>>:: Motor messages directing the movement of a
+  valve or gate.
+<<wets-flow-sensor,FlowSensor>>:: Flow Sensor message to monitor flow.
+<<wets-vessel,Vessel>>:: Message directing a vessel to move.
+
+The outgoing `Wets.1` messages, requiring encoding, are,
+
+<<wets-vessel-arrived,VesselArrived>>:: Vessel arrived, ready for transit.
+<<wets-actuator-move-done,MotorCompleted>>:: The motor command has completed,
+  the extent has been reached for a valve or gate.
+<<wets-vessel-passed-gate,VesselPassedGate>>:: Vessel has moved through and is
+  clear of the gate.
+<<wets-flow-equalized,FlowEqualized>>:: The flow has equalized on either side
+  of a gate, signalling that a gate can be opened.
+
+(((wets,module declaration)))
+
+[source,haskell]
+----
+<<wets-module>>=
+module Wets exposing (
+    <<wets-exports>>
+    )
+----
+
+As expected, the Elm JSON packages are used for the decoding.
+
+(((wets,functions,)))
+
+[source,haskell]
+----
+<<wets-imports>>=
+import Json.Encode as Encode
+import Json.Decode as Decode
+----
+
+=== Decoding incoming messages
+
+==== WetsMessage [[wets-wets-message]]
+
+This type declaration is useful so that an `elm update` case can
+handle a specific type of message.
+
+[source,haskell]
+----
+<<wets-exports>>=
+WetsMessage (..)
+----
+
+(((wets,types,WetsMessage)))
+
+[source,haskell]
+----
+<<wets-types>>=
+type WetsMessage
+    = MotorMsg
+    | FlowMsg
+    | VesselMsg
+----
+
+==== messageType [[wets-message-type]]
+
+Given a string, assumed to be an incoming message, return the message type.
+
+[source,haskell]
+----
+<<wets-exports>>=
+, messageType
+----
+
+To get the message type, the `object` field of the message is decoded, then it
+is translated into a <<wets-wets-message,WetsMessage>> type.
+
+NOTE: Yes, you could do more error tracking here, perhaps letting the
+https://package.elm-lang.org/packages/elm/core/latest/Result#Result[Result]
+propagate up to the client?
+
+(((wets,functions,messageType)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+messageType : String -> Maybe WetsMessage
+messageType s =
+    case Decode.decodeString (Decode.field "object" Decode.string) s of
+        Ok cmd ->
+            case cmd of
+                "Motor" ->
+                    Just MotorMsg
+                "FlowSensor" ->
+                    Just FlowMsg
+                "Vessel" ->
+                    Just VesselMsg
+                _ ->
+                    Nothing
+        Err _ ->
+            Nothing
+----
+
+
+==== MotorCommand [[wets-motor-command]]
+
+The strategy for all incoming messages is to decode the string as given and
+presume the client has previously determined that it is, in fact, the _type_
+of message they are expecting. That is, the client first uses
+<<wets-message-type,wetsMessageType>> before requesting a decoder to break it
+apart.
+
+(((wets,types,MotorCommand)))
+
+[source,haskell]
+----
+<<wets-types>>=
+type alias MotorCommand =
+    { object : String
+    , operation : String
+    , name : String
+    }
+----
+
+.motorDecoder [[wets-motor-decoder]]
+
+[source,haskell]
+----
+<<wets-exports>>=
+, motorDecoder, MotorCommand
+----
+
+(((wets,functions,motorDecoder)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+motorDecoder : Decode.Decoder MotorCommand
+motorDecoder =
+    Decode.map3 MotorCommand
+        (Decode.field "object" Decode.string)
+        (Decode.field "operation" Decode.string)
+        (Decode.field "name" Decode.string)
+----
+
+==== FlowCommand [[wets-flow-command]]
+
+(((wets,types,FlowCommand)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+type alias FlowCommand =
+    { object : String
+    , operation : String
+    , name : String
+    }
+----
+
+.flowDecoder [[wets-flow-decoder]]
+
+[source,haskell]
+----
+<<wets-exports>>=
+, flowDecoder, FlowCommand
+----
+
+(((wets,functions,flowDecoder)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+flowDecoder : Decode.Decoder FlowCommand
+flowDecoder =
+    Decode.map3 FlowCommand
+        (Decode.field "object" Decode.string)
+        (Decode.field "operation" Decode.string)
+        (Decode.field "name" Decode.string)
+----
+
+
+==== VesselCommand [[wets-vessel-command]]
+
+(((wets,types,VesselCommand)))
+
+[source,haskell]
+----
+<<wets-types>>=
+type alias VesselCommand =
+    { object : String
+    , operation : String
+    , license : String
+    , gate : String
+    }
+----
+
+.vesselDecoder [[wets-vessel-decoder]]
+
+[source,haskell]
+----
+<<wets-exports>>=
+, vesselDecoder, VesselCommand
+----
+
+(((wets,functions,vesselDecoder)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+vesselDecoder : Decode.Decoder VesselCommand
+vesselDecoder =
+    Decode.map4 VesselCommand
+        (Decode.field "object" Decode.string)
+        (Decode.field "operation" Decode.string)
+        (Decode.field "license" Decode.string)
+        (Decode.field "gate" Decode.string)
+----
+
+=== Encoding outgoing messages
+
+==== newVessel [[wets-new-vessel]]
+
+This message encodes for the `VesselArrived` `Wets.1` message.
+
+Create a message for a newly arriving vessel with a name (`license`) and a
+particular direction. This message has the important distinction of starting
+the process of movement through the WETS system. footnote:[It is at this
+point that the WETS population is chosen. In our case this is `Wets_1`, which
+is the graphical description of our client expects. It is expected that other
+model populations may be used in a more elaborate manner.]
+
+[source,haskell]
+----
+<<wets-exports>>=
+, newVessel
+----
+
+(((wets,functions,newVessel)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+newVessel : String -> String -> String
+newVessel license direction =
+    Encode.object
+        [ ("object", Encode.string "VesselArrived")
+        , ("license", Encode.string license)
+        , ("direction", Encode.string direction)
+        , ("wets_name", Encode.string "Wets_1")
+        ]
+        |> Encode.encode 0
+----
+
+
+==== actuatorMoveDone [[wets-actuator-move-done]]
+
+Encodes for the `MotorCompleted` `Wets.1` message.
+
+[source,haskell]
+----
+<<wets-exports>>=
+, actuatorMoveDone
+----
+
+(((wets,functions,actuatorMoveDone)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+actuatorMoveDone : String -> String
+actuatorMoveDone name =
+    Encode.object
+        [ ("object", Encode.string "MotorCompleted")
+        , ("name", Encode.string name)
+        ]
+        |> Encode.encode 0
+----
+
+
+==== vesselPassedGate [[wets-vessel-passed-gate]]
+
+Encodes for the `VesselPassedGate` `Wets.1` message.
+
+[source,haskell]
+----
+<<wets-exports>>=
+, vesselPassedGate
+----
+
+(((wets,functions,vesselPassedGate)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+vesselPassedGate : String -> String
+vesselPassedGate license =
+    Encode.object
+        [ ("object", Encode.string "VesselPassedGate")
+        , ("license", Encode.string license)
+        ]
+        |> Encode.encode 0
+----
+
+
+==== flowEqualized [[wets-flow-equalized]]
+
+Encodes for the `FlowEqualized` `Wets.1` message on a named entity.
+
+[source,haskell]
+----
+<<wets-exports>>=
+, flowEqualized
+----
+
+(((wets,functions,flowEqualized)))
+
+[source,haskell]
+----
+<<wets-functions>>=
+flowEqualized : String -> String
+flowEqualized name =
+    Encode.object
+        [ ("object", Encode.string "FlowEqualized")
+        , ("name", Encode.string name)
+        ]
+        |> Encode.encode 0
+----
+
+
+=== Code Layout
+
+(((Wets,Wets.elm)))
+
+[source,haskell]
+----
+<<Wets.elm>>=
+<<wets-module>>
+
+<<wets-imports>>
+
+<<wets-types>>
+
+<<wets-functions>>
+----
