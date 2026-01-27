@@ -250,7 +250,7 @@ decision is about navigating the difficulty of a dynamic entity in the
 
 ==== ChamberState [[main-chamber-state]]
 
-This application has a single animated chamber and it has two states.
+This application has a single animated chamber with two states.
 
 (((Main,types,ChamberState)))
 
@@ -260,6 +260,20 @@ This application has a single animated chamber and it has two states.
 type ChamberState
     = High
     | Low
+----
+
+This application has a single animated chamber. Future versions may have
+multiple animated chambers so a type is defined
+
+(((Main,types,ChamberFlow)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias ChamberFlow =
+    { chamberName : String
+    , state : ChamberState
+    }
 ----
 
 This local function provides an association between a `ChamberState` and its
@@ -329,12 +343,12 @@ image::chamber-layout.svg[]
 ----
 <<main-types>>=
 type TransitState
-    = AtUpperEntry
-    | AtUpperGate
-    | InChamberHigh
-    | InChamberLow
-    | AtLowerGate
-    | AtLowerEntry
+    = UpperEntry
+    | UpperGate
+    | ChamberHigh
+    | ChamberLow
+    | LowerGate
+    | LowerEntry
     | AtSea
 ----
 
@@ -353,17 +367,17 @@ See <<main-anim-vessel,animVessel>> for how this is used.
 toPosition : TransitState -> Util.Position
 toPosition state =
     case state of
-        AtUpperEntry ->
+        UpperEntry ->
             { x = -70.0, y = chamberDepth High }
-        AtUpperGate ->
+        UpperGate ->
             { x = 100.0, y = chamberDepth High }
-        InChamberHigh ->
+        ChamberHigh ->
             { x = 300.0, y = chamberDepth High }
-        InChamberLow ->
+        ChamberLow ->
             { x = 300.0, y = chamberDepth Low }
-        AtLowerGate ->
+        LowerGate ->
             { x = 500.0, y = chamberDepth Low }
-        AtLowerEntry ->
+        LowerEntry ->
             { x = 650.0, y = chamberDepth Low }
         AtSea ->
             { x = 0.0, y = 0.0 }
@@ -388,7 +402,7 @@ type alias TransitSequence =
 .downStreamSequence
 A `downStreamSequence` is the sequence a vessel travelling downstream is
 expected to take. Notice how its final move is from the `InChamberLow` state to
-the `AtLowerEntry` state. During animation, this will whisk the vessel image
+the `LowerEntry` state. During animation, this will whisk the vessel image
 offstage right (i.e., it skips over the `AtLowerGate` milestone.)
 
 (((Main,literals,TransitSequence)))
@@ -398,28 +412,28 @@ offstage right (i.e., it skips over the `AtLowerGate` milestone.)
 <<main-literals>>=
 downStreamSequence : TransitSequence
 downStreamSequence =
-    [ AtUpperEntry
-    , AtUpperGate
-    , InChamberHigh
-    , InChamberLow
-    , AtLowerEntry
+    [ UpperEntry
+    , UpperGate
+    , ChamberHigh
+    , ChamberLow
+    , LowerEntry
     ]
 ----
 
 .upStreamSequence
-For the `upStreamSequence`, note how the final move is from `InChamberHigh`
-to `AtUpperEntry` to whisk the vessel image offstage left.
+For the `upStreamSequence`, note how the final move is from `ChamberHigh`
+to `UpperEntry` to whisk the vessel image offstage left.
 
 [source,haskell]
 ----
 <<main-literals>>=
 upStreamSequence : TransitSequence
 upStreamSequence =
-    [ AtLowerEntry
-    , AtLowerGate
-    , InChamberLow
-    , InChamberHigh
-    , AtUpperEntry
+    [ LowerEntry
+    , LowerGate
+    , ChamberLow
+    , ChamberHigh
+    , UpperEntry
     ]
 ----
 
@@ -759,7 +773,7 @@ MoveVessel license millis ->
                     adjustSequence license model.activeVessels
               }
             , Nats.Effect.none
-            , if nextState == AtLowerEntry || nextState == AtUpperEntry
+            , if nextState == LowerEntry || nextState == UpperEntry
               then
                   Delay.after millis <| VesselFinished license
               else
@@ -1102,6 +1116,19 @@ states. The target chamber state (`cstate`) is used in the chamber animation.
 The target transit state (`tstate`) is used to build a list of (possible)
 vessel moves that are sequenced after the model is updated.
 
+(((Main,main-functions,flowTarget)))
+
+[source,haskell]
+----
+<<main-functions>>=
+flowTarget : TransitState -> Maybe ChamberFlow
+flowTarget tstate =
+    case tstate of
+        ChamberHigh -> Just ( ChamberFlow "Chamber-01" Low )
+        ChamberLow  -> Just ( ChamberFlow "Chamber-01" High )
+        _ -> Nothing
+----
+
 The chamber move takes a fixed amount of time after which the response message
 is queued to run.
 
@@ -1111,36 +1138,34 @@ is queued to run.
 handleFlow : Model -> Wets.FlowCommand -> ( Model, Cmd Msg )
 handleFlow model cmd =
     let
-        setChamber : Id -> ChamberState -> Dict Id ChamberState
-        setChamber id newState =
-            Dict.insert id newState <|
-                Animator.current model.chamberStates
+        setChamber : Id -> String -> Dict Id ChamberState
+        setChamber id sensor =
+            Dict.insert id
+                (if sensor == "Sensor-F01" then Low else High)
+                (Animator.current model.chamberStates)
 
-        targetStates : String -> (ChamberState, TransitState)
-        targetStates sname =
-            if sname == "Sensor-F01"
-            then ( Low,  InChamberHigh )
-            else ( High, InChamberLow )
-
-        (cstate, tstate) = targetStates cmd.name
+        vmoves : Id -> Maybe ChamberFlow
+               -> List ( Int, Msg ) -> List (Int, Msg)
+        vmoves vid cflow vlist =
+            case cflow of
+                Nothing -> vlist
+                Just _ -> (0, MoveVessel vid 2000) :: vlist
 
         chamberMoves : List ( Int, Msg )
         chamberMoves =
             Animator.current model.vesselStates
-                |> Dict.filter (\_ s -> s == tstate)
-                |> Dict.foldl
-                    (\vid _ -> List.append [ ( 0, MoveVessel vid 2000 ) ])
-                    []
+                |> Dict.map (\_ v -> flowTarget v)
+                |> Dict.foldl vmoves []
     in
     ( { model
         | chamberStates =
-            Animator.go (Animator.millis 2000)
-                (setChamber "Chamber-01" cstate)
+            Animator.go ( Animator.millis 2000 )
+                ( setChamber "Chamber-01" cmd.name )
                 model.chamberStates
       }
-    , Delay.sequence <|
-        chamberMoves
-            ++ [ ( 2000, FlowComplete cmd.name ) ]
+    , Delay.sequence
+        <| List.append chamberMoves
+        <| List.singleton (2000, FlowComplete cmd.name)
     )
 ----
 

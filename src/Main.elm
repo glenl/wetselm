@@ -49,6 +49,12 @@ type ChamberState
     | Low
 
 
+type alias ChamberFlow =
+    { chamberName : String
+    , state : ChamberState
+    }
+
+
 type ActuatorState
     = Opened
     | Closed
@@ -59,12 +65,12 @@ type alias Id =
 
 
 type TransitState
-    = AtUpperEntry
-    | AtUpperGate
-    | InChamberHigh
-    | InChamberLow
-    | AtLowerGate
-    | AtLowerEntry
+    = UpperEntry
+    | UpperGate
+    | ChamberHigh
+    | ChamberLow
+    | LowerGate
+    | LowerEntry
     | AtSea
 
 
@@ -97,21 +103,21 @@ type Msg
 
 downStreamSequence : TransitSequence
 downStreamSequence =
-    [ AtUpperEntry
-    , AtUpperGate
-    , InChamberHigh
-    , InChamberLow
-    , AtLowerEntry
+    [ UpperEntry
+    , UpperGate
+    , ChamberHigh
+    , ChamberLow
+    , LowerEntry
     ]
 
 
 upStreamSequence : TransitSequence
 upStreamSequence =
-    [ AtLowerEntry
-    , AtLowerGate
-    , InChamberLow
-    , InChamberHigh
-    , AtUpperEntry
+    [ LowerEntry
+    , LowerGate
+    , ChamberLow
+    , ChamberHigh
+    , UpperEntry
     ]
 
 
@@ -189,22 +195,22 @@ chamberDepth cstate =
 toPosition : TransitState -> Util.Position
 toPosition state =
     case state of
-        AtUpperEntry ->
+        UpperEntry ->
             { x = -70.0, y = chamberDepth High }
 
-        AtUpperGate ->
+        UpperGate ->
             { x = 100.0, y = chamberDepth High }
 
-        InChamberHigh ->
+        ChamberHigh ->
             { x = 300.0, y = chamberDepth High }
 
-        InChamberLow ->
+        ChamberLow ->
             { x = 300.0, y = chamberDepth Low }
 
-        AtLowerGate ->
+        LowerGate ->
             { x = 500.0, y = chamberDepth Low }
 
-        AtLowerEntry ->
+        LowerEntry ->
             { x = 650.0, y = chamberDepth Low }
 
         AtSea ->
@@ -335,7 +341,7 @@ update msg model =
                             adjustSequence license model.activeVessels
                       }
                     , Nats.Effect.none
-                    , if nextState == AtLowerEntry || nextState == AtUpperEntry then
+                    , if nextState == LowerEntry || nextState == UpperEntry then
                         Delay.after millis <| VesselFinished license
 
                       else
@@ -493,42 +499,61 @@ handleVessel model cmd =
     )
 
 
+flowTarget : TransitState -> Maybe ChamberFlow
+flowTarget tstate =
+    case tstate of
+        ChamberHigh ->
+            Just (ChamberFlow "Chamber-01" Low)
+
+        ChamberLow ->
+            Just (ChamberFlow "Chamber-01" High)
+
+        _ ->
+            Nothing
+
+
 handleFlow : Model -> Wets.FlowCommand -> ( Model, Cmd Msg )
 handleFlow model cmd =
     let
-        setChamber : Id -> ChamberState -> Dict Id ChamberState
-        setChamber id newState =
-            Dict.insert id newState <|
-                Animator.current model.chamberStates
+        setChamber : Id -> String -> Dict Id ChamberState
+        setChamber id sensor =
+            Dict.insert id
+                (if sensor == "Sensor-F01" then
+                    Low
 
-        targetStates : String -> ( ChamberState, TransitState )
-        targetStates sname =
-            if sname == "Sensor-F01" then
-                ( Low, InChamberHigh )
+                 else
+                    High
+                )
+                (Animator.current model.chamberStates)
 
-            else
-                ( High, InChamberLow )
+        vmoves :
+            Id
+            -> Maybe ChamberFlow
+            -> List ( Int, Msg )
+            -> List ( Int, Msg )
+        vmoves vid cflow vlist =
+            case cflow of
+                Nothing ->
+                    vlist
 
-        ( cstate, tstate ) =
-            targetStates cmd.name
+                Just _ ->
+                    ( 0, MoveVessel vid 2000 ) :: vlist
 
         chamberMoves : List ( Int, Msg )
         chamberMoves =
             Animator.current model.vesselStates
-                |> Dict.filter (\_ s -> s == tstate)
-                |> Dict.foldl
-                    (\vid _ -> List.append [ ( 0, MoveVessel vid 2000 ) ])
-                    []
+                |> Dict.map (\_ v -> flowTarget v)
+                |> Dict.foldl vmoves []
     in
     ( { model
         | chamberStates =
             Animator.go (Animator.millis 2000)
-                (setChamber "Chamber-01" cstate)
+                (setChamber "Chamber-01" cmd.name)
                 model.chamberStates
       }
     , Delay.sequence <|
-        chamberMoves
-            ++ [ ( 2000, FlowComplete cmd.name ) ]
+        List.append chamberMoves <|
+            List.singleton ( 2000, FlowComplete cmd.name )
     )
 
 

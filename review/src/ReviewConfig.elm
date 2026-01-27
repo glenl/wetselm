@@ -12,7 +12,7 @@ when inside the directory containing this file.
 -}
 
 import Docs.ReviewAtDocs
--- import NoConfusingPrefixOperator
+import NoConfusingPrefixOperator
 import NoDebug.Log
 import NoDebug.TodoOrToString
 import NoExposingEverything
@@ -36,7 +36,7 @@ import Simplify
 config : List Rule
 config =
     [ Docs.ReviewAtDocs.rule
---  , NoConfusingPrefixOperator.rule
+    , NoConfusingPrefixOperator.rule
     , NoDebug.Log.rule
     , NoDebug.TodoOrToString.rule
         |> Rule.ignoreErrorsForDirectories [ "tests/" ]
