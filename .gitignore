@@ -1,3 +1,6 @@
+# literate programming files
+src/
+doc/
 # elm-package generated files
 elm-stuff
 # elm-repl generated files

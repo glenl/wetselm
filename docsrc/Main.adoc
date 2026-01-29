@@ -765,10 +765,9 @@ MoveVessel license millis ->
                     <| Animator.current model.vesselStates
             in
             ( { model
-                | vesselStates =
-                    Animator.go (Animator.millis <| toFloat millis)
-                        (setVesselState nextState)
-                        model.vesselStates
+                | vesselStates = model.vesselStates
+                    |> Animator.go (Animator.millis <| toFloat millis)
+                         (setVesselState nextState)
                 , activeVessels =
                     adjustSequence license model.activeVessels
               }
@@ -796,10 +795,9 @@ MoveVessel license millis ->
 VesselFinished id ->
     ( { model
           | activeVessels = Dict.remove id model.activeVessels
-          , vesselStates =
-              Animator.go Animator.immediately
-              (Dict.remove id <| Animator.current model.vesselStates)
-              model.vesselStates
+          , vesselStates = model.vesselStates
+              |> Animator.go Animator.immediately
+                 (Dict.remove id <| Animator.current model.vesselStates)
          , message = "Finished \"" ++ id ++ "\""
       }
     , Nats.Effect.none
@@ -915,10 +913,8 @@ StartVessel direction ->
     in
     ( { model
         | vesselCount = model.vesselCount + 1
-        , vesselStates =
-            Animator.go Animator.immediately
-                startVessel
-                model.vesselStates
+        , vesselStates = model.vesselStates
+            |> Animator.go Animator.immediately startVessel
         , activeVessels =
             model.activeVessels
                 |> Dict.insert license
@@ -1158,10 +1154,9 @@ handleFlow model cmd =
                 |> Dict.foldl vmoves []
     in
     ( { model
-        | chamberStates =
-            Animator.go ( Animator.millis 2000 )
+        | chamberStates = model.chamberStates
+            |> Animator.go ( Animator.millis 2000 )
                 ( setChamber "Chamber-01" cmd.name )
-                model.chamberStates
       }
     , Delay.sequence
         <| List.append chamberMoves
@@ -1197,10 +1192,9 @@ handleMotor model cmd =
             opAsState cmd.operation
     in
     ( { model
-        | actuatorStates =
-            Animator.go (Animator.millis 1000)
+        | actuatorStates = model.actuatorStates
+            |> Animator.go (Animator.millis 1000)
                 (setActuator cmd.name actState)
-                model.actuatorStates
       }
     , Delay.after 1000 <| ActuatorMoveDone cmd.name
     )
@@ -1480,7 +1474,8 @@ appropriate direction.
 
 * The fixed `xoffset` is passed in.
 
-* The <<main-chamber-state,chamber depth>> is given by the depth associated with the state.
+* The <<main-chamber-state,chamber depth>> is given by the depth associated
+  with the state.
 
 (((main,functions,animChamber)))
 

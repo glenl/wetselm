@@ -334,9 +334,9 @@ update msg model =
                     in
                     ( { model
                         | vesselStates =
-                            Animator.go (Animator.millis <| toFloat millis)
-                                (setVesselState nextState)
-                                model.vesselStates
+                            model.vesselStates
+                                |> Animator.go (Animator.millis <| toFloat millis)
+                                    (setVesselState nextState)
                         , activeVessels =
                             adjustSequence license model.activeVessels
                       }
@@ -352,9 +352,9 @@ update msg model =
             ( { model
                 | activeVessels = Dict.remove id model.activeVessels
                 , vesselStates =
-                    Animator.go Animator.immediately
-                        (Dict.remove id <| Animator.current model.vesselStates)
-                        model.vesselStates
+                    model.vesselStates
+                        |> Animator.go Animator.immediately
+                            (Dict.remove id <| Animator.current model.vesselStates)
                 , message = "Finished \"" ++ id ++ "\""
               }
             , Nats.Effect.none
@@ -401,9 +401,8 @@ update msg model =
             ( { model
                 | vesselCount = model.vesselCount + 1
                 , vesselStates =
-                    Animator.go Animator.immediately
-                        startVessel
-                        model.vesselStates
+                    model.vesselStates
+                        |> Animator.go Animator.immediately startVessel
                 , activeVessels =
                     model.activeVessels
                         |> Dict.insert license
@@ -547,9 +546,9 @@ handleFlow model cmd =
     in
     ( { model
         | chamberStates =
-            Animator.go (Animator.millis 2000)
-                (setChamber "Chamber-01" cmd.name)
-                model.chamberStates
+            model.chamberStates
+                |> Animator.go (Animator.millis 2000)
+                    (setChamber "Chamber-01" cmd.name)
       }
     , Delay.sequence <|
         List.append chamberMoves <|
@@ -579,9 +578,9 @@ handleMotor model cmd =
     in
     ( { model
         | actuatorStates =
-            Animator.go (Animator.millis 1000)
-                (setActuator cmd.name actState)
-                model.actuatorStates
+            model.actuatorStates
+                |> Animator.go (Animator.millis 1000)
+                    (setActuator cmd.name actState)
       }
     , Delay.after 1000 <| ActuatorMoveDone cmd.name
     )
