@@ -222,7 +222,7 @@ vesselDecoder =
 
 === Encoding outgoing messages
 
-==== newVessel [[wets-new-vessel]]
+==== startVessel [[wets-start-vessel]]
 
 This message encodes for the `VesselArrived` `Wets.1` message.
 
@@ -236,21 +236,21 @@ model populations may be used in a more elaborate manner.]
 [source,haskell]
 ----
 <<wets-exports>>=
-, newVessel
+, startVessel
 ----
 
-(((wets,functions,newVessel)))
+(((wets,functions,startVessel)))
 
 [source,haskell]
 ----
 <<wets-functions>>=
-newVessel : String -> String -> String
-newVessel license direction =
+startVessel : String -> String -> String -> String
+startVessel popname license direction =
     Encode.object
         [ ("object", Encode.string "VesselArrived")
         , ("license", Encode.string license)
         , ("direction", Encode.string direction)
-        , ("wets_name", Encode.string "Wets_1")
+        , ("wets_name", Encode.string popname)
         ]
         |> Encode.encode 0
 ----

@@ -53,9 +53,12 @@ theme coloring without too much hassle.
 ----
 <<main-imports>>=
 import OUI.Button as Button
+import OUI.Icon as Icon
 import OUI.Material as Material
 import OUI.Material.Color
 import OUI.Material.Theme
+import OUI.Menu
+import OUI.MenuButton
 import OUI.Text as Text
 ----
 
@@ -159,6 +162,8 @@ type alias Model =
     , actuatorStates : Animator.Timeline (Dict Id ActuatorState)
     , chamberStates : Animator.Timeline (Dict Id ChamberState)
     , vesselStates : Animator.Timeline (Dict Id TransitState)
+    , wets_popname : String
+    , popState : OUI.MenuButton.State
     , activeVessels : VesselDict
     , vesselCount : Int
     , message : String
@@ -223,16 +228,26 @@ init flags =
                 Dict.fromList
                     [ ( "Valve-M01", Closed )
                     , ( "Valve-M02", Closed )
+                    , ( "Valve-M03", Closed )
+                    , ( "Valve-M04", Closed )
+                    , ( "Valve-M05", Closed )
                     , ( "Gate-M01", Closed )
                     , ( "Gate-M02", Closed )
+                    , ( "Gate-M03", Closed )
+                    , ( "Gate-M04", Closed )
+                    , ( "Gate-M05", Closed )
                     ]
       , chamberStates =
             Animator.init <|
-                Dict.fromList [ ( "Chamber-01", High ) ]
+                Dict.fromList [ ( "Chamber-01", High )
+                              , ( "Chamber-02", High )
+                              ]
       , vesselStates = Animator.init Dict.empty
       , nats = nats
       , socket = Nats.Socket.new "0" "ws://localhost:8087"
       , serverInfo = Nothing
+      , wets_popname = "Wets_1"
+      , popState = OUI.MenuButton.init "popmenu"
       , vesselCount = 0
       , activeVessels = Dict.empty
       , message = ""
@@ -584,6 +599,7 @@ subscriptions model =
     Sub.batch
         [ Nats.subscriptions natsConfig model.nats
         , Animator.toSubscription AnimationRuntimeStep model animator
+        , OUI.MenuButton.onOutsideClick (MenuButtonMsg "popmenu") model.popState
         ]
 ----
 
@@ -694,6 +710,7 @@ update msg model =
         <<main-update-case>>
 ----
 
+
 NOTE: The return value includes a `Nats.Effect` which is a departure from the
 standard Elm architecture due to the wrapped update (which got us here.)
 
@@ -719,6 +736,46 @@ AnimationRuntimeStep tick ->
     , Nats.Effect.none
     , Cmd.none
     )
+----
+
+
+==== OnMenuSelect
+
+This is a generic message for when a menu is selected. It doesn't serve much
+use at this point and may be factored out in the future.
+
+[source,haskell]
+----
+<<main-messages>>=
+| OnMenuSelect String String
+| MenuButtonMsg String (OUI.MenuButton.Msg String Msg)
+----
+
+[source,haskell]
+----
+<<main-update-case>>=
+OnMenuSelect _ menuEntry ->
+    ( { model
+          | wets_popname = menuEntry
+      }
+      , Nats.Effect.none
+      , Cmd.none
+    )
+
+MenuButtonMsg id menuMsg ->
+    case id of
+        "popmenu" ->
+            let
+                ( state, cmd ) = OUI.MenuButton.update menuMsg model.popState
+            in
+            ( { model | popState = state }
+              , Nats.Effect.none
+              , cmd
+            )
+        _ ->
+            ( model
+            , Nats.Effect.none
+            , Cmd.none )
 ----
 
 
@@ -923,7 +980,7 @@ StartVessel direction ->
             "Starting vessel \"" ++ license ++ "\""
       }
     , Nats.publish "Wets.1" <|
-        Wets.newVessel license <|
+        Wets.startVessel model.wets_popname license <|
             Util.toString direction
     , Delay.after 100 <| MoveVessel license 1000
     )
@@ -1238,6 +1295,7 @@ view model =
                     , E.paddingEach { top = 0, right = 0, bottom = 0, left = 30} ]
                     [ Text.displayMedium "WETS"
                         |> Material.text UI.theme
+                    , wetsMenu model
                     ]
                 , E.row
                     [ E.paddingEach
@@ -1579,6 +1637,35 @@ allVessels model =
                 model
                 (Tuple.second t).direction)
 ----
+
+==== wetsMenu [[main,wets-menu]]
+
+[source,haskell]
+----
+<<main-functions>>=
+wetsMenu : Model -> E.Element Msg
+wetsMenu model =
+    OUI.MenuButton.new
+        (MenuButtonMsg "popmenu")
+        (OnMenuSelect "popmenu")
+        (Button.new
+             model.wets_popname |> Button.outlinedButton
+        )
+        (OUI.Menu.new identity
+             |> OUI.Menu.addItems [ "Wets_1", "Wets_2" ]
+             |> OUI.Menu.withIcon
+                 (\i ->
+                     if i == model.wets_popname then
+                         Just Icon.check
+                     else
+                         Nothing
+                 )
+        )
+        |> OUI.MenuButton.withOpenCloseIcons
+           Icon.arrow_drop_down Icon.arrow_drop_up
+        |> Material.menuButton UI.theme model.popState []
+----
+
 
 === Code Layout
 
