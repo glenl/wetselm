@@ -59,10 +59,13 @@ PDF =\
 	$(DOCDIR)/$(patsubst %.adoc,%.pdf,$(DOCSRC))\
 	$(NULL)
 
+HTML =\
+	$(DOCDIR)/$(patsubst %.adoc,%.html,$(DOCSRC))\
+	$(NULL)
+
 ELMSRCS =\
 	$(patsubst %.adoc,$(CODEDIR)/%.elm,$(CODESRCS))\
 	$(NULL)
-
 
 IMAGES =\
 	$(IMAGEDIR)/wetselm-ui.png \
@@ -74,6 +77,7 @@ ATANGLEOPTS =\
 
 CLEANFILES =\
 	$(PDF) \
+	$(HTML) \
 	$(ELMSRCS) \
 	$(NULL)
 
@@ -94,7 +98,7 @@ $(DOCDIR)/%.pdf : %.adoc # $(IMAGEDIR)/classes.uxf
 		--theme ./wetselm-theme.yml\
 		-o $@ $<
 
-$(DOCDIR)/%-doc.html : %.adoc
+$(DOCDIR)/%.html : %.adoc
 	asciidoctor $(ADOCTOR_OPTS)\
 		-a imagesdir=../src/images -o $@ $<
 
@@ -102,9 +106,11 @@ $(DOCDIR)/%-doc.html : %.adoc
 
 all : doc code
 
-doc :  $(PDF) # $(HTML)
+doc :  $(PDF) $(HTML)
 
 $(PDF) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml $(IMAGES)
+
+$(HTML) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml $(IMAGES)
 
 elm.js : $()
 	elm make --optimize --output=$@ $(SRC)/Main.elm

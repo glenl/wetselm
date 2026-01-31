@@ -346,11 +346,11 @@ that it will traverse either down- or up- stream.
 .Transit milestones in a vessel's path
 image::chamber-layout.svg[]
 
-* The `*Entry` states are offstage (outside the SVG view) positions and not
+* The _Entry_ states are offstage (outside the SVG view) positions and not
   meant to be directly viewed by the user. This allows an initial animation from
-  offstage to a waiting state.
+  offstage to the waiting state.
 
-* The `InChamber*` locations are employed for both vessel and chamber animations.
+* The _Chamber_ locations are employed for both vessel and chamber animations.
 
 (((Main,TransitState)))
 
@@ -360,42 +360,13 @@ image::chamber-layout.svg[]
 type TransitState
     = UpperEntry
     | UpperGate
-    | ChamberHigh
-    | ChamberLow
+    | AChamberHigh
+    | AChamberLow
+    | BChamberHigh
+    | BChamberLow
     | LowerGate
     | LowerEntry
     | AtSea
-----
-
-==== toPosition [[main-to-position]]
-
-Provide an XY position for each <<main-transit-state,TransitState>>. These
-are SVG positions within a SVG view.
-
-See <<main-anim-vessel,animVessel>> for how this is used.
-
-(((Main,functions,toPosition)))
-
-[source,haskell]
-----
-<<main-functions>>=
-toPosition : TransitState -> Util.Position
-toPosition state =
-    case state of
-        UpperEntry ->
-            { x = -70.0, y = chamberDepth High }
-        UpperGate ->
-            { x = 100.0, y = chamberDepth High }
-        ChamberHigh ->
-            { x = 300.0, y = chamberDepth High }
-        ChamberLow ->
-            { x = 300.0, y = chamberDepth Low }
-        LowerGate ->
-            { x = 500.0, y = chamberDepth Low }
-        LowerEntry ->
-            { x = 650.0, y = chamberDepth Low }
-        AtSea ->
-            { x = 0.0, y = 0.0 }
 ----
 
 
@@ -416,7 +387,7 @@ type alias TransitSequence =
 
 .downStreamSequence
 A `downStreamSequence` is the sequence a vessel travelling downstream is
-expected to take. Notice how its final move is from the `InChamberLow` state to
+expected to take. Notice how its final move is from the `InAChamberLow` state to
 the `LowerEntry` state. During animation, this will whisk the vessel image
 offstage right (i.e., it skips over the `AtLowerGate` milestone.)
 
@@ -429,14 +400,14 @@ downStreamSequence : TransitSequence
 downStreamSequence =
     [ UpperEntry
     , UpperGate
-    , ChamberHigh
-    , ChamberLow
+    , AChamberHigh
+    , AChamberLow
     , LowerEntry
     ]
 ----
 
 .upStreamSequence
-For the `upStreamSequence`, note how the final move is from `ChamberHigh`
+For the `upStreamSequence`, note how the final move is from `AChamberHigh`
 to `UpperEntry` to whisk the vessel image offstage left.
 
 [source,haskell]
@@ -446,8 +417,8 @@ upStreamSequence : TransitSequence
 upStreamSequence =
     [ LowerEntry
     , LowerGate
-    , ChamberLow
-    , ChamberHigh
+    , AChamberLow
+    , AChamberHigh
     , UpperEntry
     ]
 ----
@@ -1177,8 +1148,8 @@ vessel moves that are sequenced after the model is updated.
 flowTarget : TransitState -> Maybe ChamberFlow
 flowTarget tstate =
     case tstate of
-        ChamberHigh -> Just ( ChamberFlow "Chamber-01" Low )
-        ChamberLow  -> Just ( ChamberFlow "Chamber-01" High )
+        AChamberHigh -> Just ( ChamberFlow "Chamber-01" Low )
+        AChamberLow  -> Just ( ChamberFlow "Chamber-01" High )
         _ -> Nothing
 ----
 
@@ -1601,21 +1572,26 @@ changing water level, this easing is zeroed in `y` to force a linear motion.
 <<main-functions>>=
 animVessel : Id -> Model -> Util.Direction -> Svg msg
 animVessel id model direction =
-    UI.vessel id direction
-    <| Animator.xy model.vesselStates <|
-        \vStates ->
-            let
-                xypos : Util.Position
-                xypos =
-                    Dict.get id vStates
-                        |> Maybe.withDefault AtSea
-                        |> toPosition
-            in
-                { x = Animator.at xypos.x
-                , y = Animator.at xypos.y
-                    |> Animator.leaveSmoothly 0
-                    |> Animator.arriveSmoothly 0
-                }
+    case Dict.get model.wets_popname wetsPop of
+        Nothing ->
+            Svg.text ""
+        Just strategy ->
+            UI.vessel id direction <|
+                Animator.xy model.vesselStates <|
+                    \vStates ->
+                        let
+                            xypos : Util.Position
+                            xypos =
+                                Dict.get id vStates
+                                    |> Maybe.withDefault AtSea
+                                    |> strategy.toPosition
+                        in
+                        { x = Animator.at xypos.x
+                        , y =
+                            Animator.at xypos.y
+                                |> Animator.leaveSmoothly 0
+                                |> Animator.arriveSmoothly 0
+                        }
 ----
 
 
@@ -1666,6 +1642,90 @@ wetsMenu model =
         |> Material.menuButton UI.theme model.popState []
 ----
 
+
+==== VesselStrategy [[main-vessel-strategy]]
+
+WETS populations define the layout of a canal lock; a _VesselStrategy_
+contains the data that will define how a vessel moves through those locks. So
+a strategy for each supported population is required.
+
+upSequence:: An ordered list of <<main-transit-state,TransitStates>> that a
+vessel will traverse when going upstream.
+
+downSequence:: An ordered list of <<main-transit-state,TransitStates>> that a
+vessel will traverse when going downstream.
+
+toPosition:: A function to provide an XY position for each
+<<main-transit-state,TransitState>>. These are SVG positions within a SVG
+view. See <<main-anim-vessel,animVessel>> for how this is used.
+
+(((main,types,VesselStrategy)))
+
+[source,haskell]
+----
+<<main-types>>=
+type alias VesselStrategy =
+    { upSequence : TransitSequence
+    , downSequence : TransitSequence
+    , toPosition : ( TransitState -> Util.Position )
+    }
+----
+
+.wetsOne
+
+This literal provides the <<main-vessel-strategy,VesselStrategy>> instance for
+the WETS population named *Wets_1*.
+
+(((main,literals,wetsOne)))
+(((main,literals,Wets_1)))
+
+[source,haskell]
+----
+<<main-literals>>=
+wetsOne : VesselStrategy
+wetsOne =
+    { upSequence =
+          [ LowerEntry
+          , LowerGate
+          , AChamberLow
+          , AChamberHigh
+          , UpperEntry
+          ]
+    , downSequence =
+        [ UpperEntry
+        , UpperGate
+        , AChamberHigh
+        , AChamberLow
+        , LowerEntry
+        ]
+    , toPosition =
+          (\tstate ->
+               case tstate of
+                   LowerEntry   -> Util.Position 650.0 80.0
+                   LowerGate    -> Util.Position 500.0 80.0
+                   AChamberLow  -> Util.Position 300.0 80.0
+                   AChamberHigh -> Util.Position 300.0 40.0
+                   UpperGate    -> Util.Position 100.0 40.0
+                   UpperEntry   -> Util.Position -70.0 40.0
+                   _ -> Util.Position 0.0 0.0
+              )
+    }
+----
+
+==== wetsPop [[main-wets-pop]]
+
+This is a dictionary that hold <<main-vessel-strategy,strategies>> for all
+supported WETS populations.
+
+(((main,literals,wetsPop)))
+
+[source,haskell]
+----
+<<main-literals>>=
+wetsPop : Dict String VesselStrategy
+wetsPop = Dict.fromList
+          [ ( "Wets_1", wetsOne )]
+----
 
 === Code Layout
 

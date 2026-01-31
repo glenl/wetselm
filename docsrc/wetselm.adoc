@@ -2,6 +2,8 @@
 :toc:
 :toclevels: 2
 
+:stylesheet: clean.css
+
 :icons: font
 :imagesdir: ../images
 :stem: latexmath
