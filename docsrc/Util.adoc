@@ -4,7 +4,7 @@ The `Util` module holds various types and functions that are used throughout
 the application, typically refactored here after review to reduce weight in
 modules that require clarity.
 
-[source,haskell]
+[source,elm]
 ----
 <<util-module>>=
 module Util exposing (
@@ -16,13 +16,13 @@ module Util exposing (
 
 (((Util,types,Direction)))
 
-[source,haskell]
+[source,elm]
 ----
 <<util-exports>>=
 Direction(..)
 ----
 
-[source,haskell]
+[source,elm]
 ----
 <<util-types>>=
 type Direction
@@ -30,7 +30,7 @@ type Direction
     | Downstream
 ----
 
-[source,haskell]
+[source,elm]
 ----
 <<util-exports>>=
 , toString
@@ -40,7 +40,7 @@ type Direction
 
 (((Util,)))
 
-[source,haskell]
+[source,elm]
 ----
 <<util-functions>>=
 toString : Direction -> String
@@ -60,13 +60,13 @@ here.
 
 (((Util,types,Position)))
 
-[source,haskell]
+[source,elm]
 ----
 <<util-exports>>=
 , Position
 ----
 
-[source,haskell]
+[source,elm]
 ----
 <<util-types>>=
 type alias Position =
@@ -84,20 +84,20 @@ its a boat title, capitalize the text.
 
 (((Util,functions,newVesselName)))
 
-[source,haskell]
+[source,elm]
 ----
 <<util-exports>>=
 , newVesselName
 ----
 
-[source,haskell]
+[source,elm]
 ----
 <<util-imports>>=
 import Lorem
 import String.Extra
 ----
 
-[source,haskell]
+[source,elm]
 ----
 <<util-functions>>=
 newVesselName : Int -> String
@@ -125,7 +125,7 @@ newVesselName index =
 
 === Code Layout
 
-[source,haskell]
+[source,elm]
 ----
 <<Util.elm>>=
 <<util-module>>

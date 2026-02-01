@@ -81,36 +81,35 @@ CLEANFILES =\
 	$(ELMSRCS) \
 	$(NULL)
 
+#	--attribute stylesheet=styles.css
 ADOCTOR_OPTS =\
-	-d book\
-	-a source-highlighter=rouge \
-	-a author=$(AUTHOR)\
-	-a revnumber=$(VERSION)\
-	-a revdate=$(REVISIONDATE)\
-	-a umlet=$(HOME)/.local/bin/Umlet-15.0.0/umlet.jar\
-	-a stem=latexmath \
+	--doctype=book\
+	--attribute revnumber=$(VERSION)\
+	--attribute revdate=$(REVISIONDATE)\
+	--attribute umlet=$(HOME)/.local/bin/Umlet-15.0.0/umlet.jar\
+	--attribute source-highlighter=rouge \
 	-r asciidoctor-diagram\
 	$(NULL)
 
 $(DOCDIR)/%.pdf : %.adoc # $(IMAGEDIR)/classes.uxf
 	asciidoctor-pdf $(ADOCTOR_OPTS)\
-		-a imagesdir=$(IMAGEDIR)\
 		--theme ./wetselm-theme.yml\
-		-o $@ $<
+		--out-file $@ $<
 
 $(DOCDIR)/%.html : %.adoc
-	asciidoctor $(ADOCTOR_OPTS)\
-		-a imagesdir=../src/images -o $@ $<
+	asciidoctor $(ADOCTOR_OPTS) --out-file $@ $<
 
 .PHONY : all doc code clean
+
+html : $(HTML)
 
 all : doc code
 
 doc :  $(PDF) $(HTML)
 
-$(PDF) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml $(IMAGES)
+$(PDF) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml clean.css styles.css $(IMAGES)
 
-$(HTML) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml $(IMAGES)
+$(HTML) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml clean.css styles.css $(IMAGES)
 
 elm.js : $()
 	elm make --optimize --output=$@ $(SRC)/Main.elm

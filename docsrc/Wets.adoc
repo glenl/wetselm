@@ -23,7 +23,7 @@ The outgoing `Wets.1` messages, requiring encoding, are,
 
 (((wets,module declaration)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-module>>=
 module Wets exposing (
@@ -35,7 +35,7 @@ As expected, the Elm JSON packages are used for the decoding.
 
 (((wets,functions,)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-imports>>=
 import Json.Encode as Encode
@@ -49,7 +49,7 @@ import Json.Decode as Decode
 This type declaration is useful so that an `elm update` case can
 handle a specific type of message.
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 WetsMessage (..)
@@ -57,7 +57,7 @@ WetsMessage (..)
 
 (((wets,types,WetsMessage)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-types>>=
 type WetsMessage
@@ -70,7 +70,7 @@ type WetsMessage
 
 Given a string, assumed to be an incoming message, return the message type.
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , messageType
@@ -85,7 +85,7 @@ propagate up to the client?
 
 (((wets,functions,messageType)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 messageType : String -> Maybe WetsMessage
@@ -116,7 +116,7 @@ apart.
 
 (((wets,types,MotorCommand)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-types>>=
 type alias MotorCommand =
@@ -128,7 +128,7 @@ type alias MotorCommand =
 
 .motorDecoder [[wets-motor-decoder]]
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , motorDecoder, MotorCommand
@@ -136,7 +136,7 @@ type alias MotorCommand =
 
 (((wets,functions,motorDecoder)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 motorDecoder : Decode.Decoder MotorCommand
@@ -151,7 +151,7 @@ motorDecoder =
 
 (((wets,types,FlowCommand)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 type alias FlowCommand =
@@ -163,7 +163,7 @@ type alias FlowCommand =
 
 .flowDecoder [[wets-flow-decoder]]
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , flowDecoder, FlowCommand
@@ -171,7 +171,7 @@ type alias FlowCommand =
 
 (((wets,functions,flowDecoder)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 flowDecoder : Decode.Decoder FlowCommand
@@ -187,7 +187,7 @@ flowDecoder =
 
 (((wets,types,VesselCommand)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-types>>=
 type alias VesselCommand =
@@ -200,7 +200,7 @@ type alias VesselCommand =
 
 .vesselDecoder [[wets-vessel-decoder]]
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , vesselDecoder, VesselCommand
@@ -208,7 +208,7 @@ type alias VesselCommand =
 
 (((wets,functions,vesselDecoder)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 vesselDecoder : Decode.Decoder VesselCommand
@@ -233,7 +233,7 @@ point that the WETS population is chosen. In our case this is `Wets_1`, which
 is the graphical description of our client expects. It is expected that other
 model populations may be used in a more elaborate manner.]
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , startVessel
@@ -241,7 +241,7 @@ model populations may be used in a more elaborate manner.]
 
 (((wets,functions,startVessel)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 startVessel : String -> String -> String -> String
@@ -260,7 +260,7 @@ startVessel popname license direction =
 
 Encodes for the `MotorCompleted` `Wets.1` message.
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , actuatorMoveDone
@@ -268,7 +268,7 @@ Encodes for the `MotorCompleted` `Wets.1` message.
 
 (((wets,functions,actuatorMoveDone)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 actuatorMoveDone : String -> String
@@ -285,7 +285,7 @@ actuatorMoveDone name =
 
 Encodes for the `VesselPassedGate` `Wets.1` message.
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , vesselPassedGate
@@ -293,7 +293,7 @@ Encodes for the `VesselPassedGate` `Wets.1` message.
 
 (((wets,functions,vesselPassedGate)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 vesselPassedGate : String -> String
@@ -310,7 +310,7 @@ vesselPassedGate license =
 
 Encodes for the `FlowEqualized` `Wets.1` message on a named entity.
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-exports>>=
 , flowEqualized
@@ -318,7 +318,7 @@ Encodes for the `FlowEqualized` `Wets.1` message on a named entity.
 
 (((wets,functions,flowEqualized)))
 
-[source,haskell]
+[source,elm]
 ----
 <<wets-functions>>=
 flowEqualized : String -> String
@@ -335,7 +335,7 @@ flowEqualized name =
 
 (((Wets,Wets.elm)))
 
-[source,haskell]
+[source,elm]
 ----
 <<Wets.elm>>=
 <<wets-module>>

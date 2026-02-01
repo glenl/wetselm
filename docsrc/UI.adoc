@@ -16,7 +16,7 @@ is broken into two parts,
 
 (((chunks,UI,skyKeyColors)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-imports>>=
 import Angle
@@ -35,7 +35,7 @@ The chosen font needs some supporting code in the `index.html` file.
 
 (((chunks,UI,typescale)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 typescale : Theme.Typescale
@@ -64,7 +64,7 @@ typescale =
 
 ==== theme [[ui-theme]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 theme
@@ -75,7 +75,7 @@ for the material look.
 
 (((chunks,UI,theme)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 theme : Theme.Theme ()
@@ -87,7 +87,7 @@ theme =
 
 ==== layout [[ui-layout]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 , layout
@@ -96,7 +96,7 @@ theme =
 The layout sets up the overall color and options of the UI. The `focusStyle`
 is _disappeared_ so as to not interfere with the material look.
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-imports>>=
 import Element as E
@@ -108,7 +108,7 @@ import Html.Attributes
 
 (((chunks,UI,layout)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 layout : E.Element msg -> Html msg
@@ -138,7 +138,7 @@ layout =
 
 === Lock graphics [[ui-lock-graphics]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-imports>>=
 import Svg exposing (Svg)
@@ -147,7 +147,7 @@ import Svg.Attributes as SvgA
 
 ==== vane [[ui-vane]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 , vane
@@ -159,7 +159,7 @@ the heavy lifting.
 
 (((chunks,UI,vane)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 vane : Int -> Int -> Float -> Svg msg
@@ -191,7 +191,7 @@ vane x y radians =
 
 ==== hub [[ui-hub]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 , hub
@@ -201,7 +201,7 @@ This is the center of the _valve_ and isn't meant to animate.
 
 (((chunks,UI,hub)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 hub : Int -> Int -> Svg msg
@@ -217,7 +217,7 @@ hub x y =
 
 ==== chamber [[ui-chamber]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 , chamber
@@ -228,7 +228,7 @@ achieve animation the _depth_ parameter is used to vary the height.
 
 (((chunks,UI,chamber)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 chamber : Int -> Int -> Svg msg
@@ -245,7 +245,7 @@ chamber xoffset depth =
 
 ==== gate [[ui-gate]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 , gate
@@ -256,7 +256,7 @@ a parameter so it can be animated externally.
 
 (((chunks,UI,gate)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 gate : Int -> Int -> Float -> Svg msg
@@ -275,7 +275,7 @@ gate x y opacity =
 
 ==== vessel [[ui-vessel]]
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-exports>>=
 , vessel
@@ -292,7 +292,7 @@ to center the text.
 
 (((chunks,UI,vessel)))
 
-[source,haskell]
+[source,elm]
 ----
 <<ui-functions>>=
 vessel : String -> Util.Direction -> Util.Position -> Svg msg
@@ -341,7 +341,7 @@ vessel name direction pos =
 
 (((chunks,UI,UI.elm)))
 
-[source,haskell]
+[source,elm ]
 ----
 <<UI.elm>>=
 module UI exposing
