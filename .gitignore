@@ -1,8 +1,8 @@
 # literate programming targets
 src
 src/*.elm
-doc
 doc/*.pdf
+doc/*.html
 **/elm.js
 # elm-package generated files
 elm-stuff

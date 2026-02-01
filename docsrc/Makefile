@@ -46,7 +46,6 @@ DOCSRCS = \
 	$(NULL)
 
 REQUIRED_DIRS =\
-	$(DOCDIR)\
 	$(CODEDIR)\
 	$(NULL)
 
@@ -88,7 +87,7 @@ ADOCTOR_OPTS =\
 	--attribute revdate=$(REVISIONDATE)\
 	--attribute umlet=$(HOME)/.local/bin/Umlet-15.0.0/umlet.jar\
 	--attribute source-highlighter=rouge \
-	-r asciidoctor-diagram\
+	--require asciidoctor-diagram\
 	$(NULL)
 
 $(DOCDIR)/%.pdf : %.adoc # $(IMAGEDIR)/classes.uxf
@@ -97,7 +96,10 @@ $(DOCDIR)/%.pdf : %.adoc # $(IMAGEDIR)/classes.uxf
 		--out-file $@ $<
 
 $(DOCDIR)/%.html : %.adoc
-	asciidoctor $(ADOCTOR_OPTS) --out-file $@ $<
+	asciidoctor $(ADOCTOR_OPTS)\
+		--attribute iconfont-remote!\
+		--attribute docinfo=shared-head\
+		--out-file $@ $<
 
 .PHONY : all doc code clean
 
@@ -107,9 +109,9 @@ all : doc code
 
 doc :  $(PDF) $(HTML)
 
-$(PDF) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml clean.css styles.css $(IMAGES)
+$(PDF) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml $(IMAGES)
 
-$(HTML) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml clean.css styles.css $(IMAGES)
+$(HTML) : $(DOCSRC) $(DOCSRCS) wetselm-theme.yml $(IMAGES)
 
 elm.js : $()
 	elm make --optimize --output=$@ $(SRC)/Main.elm

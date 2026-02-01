@@ -228,10 +228,10 @@ This message encodes for the `VesselArrived` `Wets.1` message.
 
 Create a message for a newly arriving vessel with a name (`license`) and a
 particular direction. This message has the important distinction of starting
-the process of movement through the WETS system. footnote:[It is at this
-point that the WETS population is chosen. In our case this is `Wets_1`, which
-is the graphical description of our client expects. It is expected that other
-model populations may be used in a more elaborate manner.]
+the process of movement through the WETS system.
+
+IMPORTANT: It is at this point that the WETS population choice is passed to
+the executable model.
 
 [source,elm]
 ----
