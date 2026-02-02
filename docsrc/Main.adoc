@@ -71,7 +71,7 @@ import Svg.Attributes as SvgA
 ----
 
 
-NOTE:: Not all links for packages used in this application are annotated in
+NOTE: Not all links for packages used in this application are annotated in
 this document. Please peruse the absolute source, the local `elm.json` file,
 for every package used. All elm packages can be found in the
 https://package.elm-lang.org/[Elm package catalog].
@@ -137,7 +137,7 @@ main =
         }
 ----
 
-A _wrapped_ update is used so the NATS messages arriving can be inserted into
+A _wrapped_ update is used so the arriving NATS messages can be inserted into
 the _update_ functionality. Take a look at the
 <<main-wrapped-update,wrappedUpdate>> function for more detail.
 
@@ -208,9 +208,6 @@ initializes all elements of the <<main-model,Model>>.
 The NATS socket is defined to address the web-socket address defined
 in the `server.config` file.
 
-NOTE: There is only one `Chamber` even though the use of a dictionary suggests
-otherwise. This was done for future cases with multiple chambers.
-
 (((Main,functions,init)))
 
 [source,elm]
@@ -239,8 +236,8 @@ init flags =
                     ]
       , chamberStates =
             Animator.init <|
-                Dict.fromList [ ( "Chamber-01", High )
-                              , ( "Chamber-02", High )
+                Dict.fromList [ ( "ChamberA", High )
+                              , ( "ChamberB", High )
                               ]
       , vesselStates = Animator.init Dict.empty
       , nats = nats
@@ -256,16 +253,15 @@ init flags =
     )
 ----
 
-CAUTION: A design decision has been made with regards to vessels. Their state -- where
-they are located during transit -- and the vessel instance are managed
-separately. This is probably more efficient for animating but, mostly, this
-decision is about navigating the difficulty of a dynamic entity in the
-`Animator` construct.
+CAUTION: A design decision has been made with regards to vessels. Their state
+-- where they are located during transit -- and the vessel instance are
+managed separately.
 
 
 ==== ChamberState [[main-chamber-state]]
 
-This application has a single animated chamber with two states.
+The number of chambers are defined by the number of gates. Each chamber has a
+`High` and `Low` state.
 
 (((Main,types,ChamberState)))
 
@@ -338,7 +334,7 @@ type alias Id =
 
 ==== TransitState [[main-transit-state]]
 
-A `TransitState` defines location milestones in a vessels path through a
+A `TransitState` defines positional milestones in a vessels path through a
 transit lane. Each vessel will have a specific
 <<main-transit-sequence,transit sequence>>
 that it will traverse either down- or up- stream.
@@ -350,7 +346,8 @@ image::chamber-layout.svg[]
   meant to be directly viewed by the user. This allows an initial animation from
   offstage to the waiting state.
 
-* The _Chamber_ locations are employed for both vessel and chamber animations.
+* The _Chamber_ states are also employed by flow control when determining if a
+  vessel is present in a chamber.
 
 (((Main,TransitState)))
 
@@ -1131,14 +1128,46 @@ import Delay
 
 (((main,functions,handleFlow)))
 
-This command is received a valve has been opened that will result in
+This command is received when a valve has been opened that will result in
 manipulating the level of water in a chamber. There may or may not be vessels
-in the chamber.
+in the chamber. For a *Wets_1* layout -- 1 chamber, 2 gates -- the reactions
+on the chamber are straightforward. Open the lower valve and the sole chamber
+will drain, Open the upstream valve and it will fill.
 
-The name of the sensor is used to derive the target `Chamber-` and `Transit-`
-states. The target chamber state (`cstate`) is used in the chamber animation.
-The target transit state (`tstate`) is used to build a list of (possible)
-vessel moves that are sequenced after the model is updated.
+It is somewhat more complicated with a *Wets_2* layout, as shown in
+<<main-flow-reaction-table,the following diagram>>, which shows a *Wets_2* layout that has 3 gates
+forming 2 chambers.
+
+.Chamber layout for Wets_2 [[main-flow-reaction-table]]
+image::wets-2-layout.svg[role=center]
+
+The upstream and downstream reactions are similar to *Wets_1* but special care
+must be taken with the center chamber.
+
+.Flow Sensor reactions
+[cols="1,2,2,1",options="header",width="80%",role=center]
+|===
+| Population | Flow Sensor | Affected Chamber | Direction
+
+.2+| Wets_1
+| Sensor-F01 | ChamberA | Down
+
+| Sensor-F02 | ChamberA | Up
+
+.4+| Wets_2
+| Sensor-F03 | ChamberA | Down
+
+.2+|Sensor-F04
+| ChamberA | Down
+| ChamberB | Up
+
+| Sensor-F05 | ChamberB | Up
+|===
+
+The name of the sensor can be used to derive the target `Chamber` and its
+target states. The target chamber state (`cstate`) is used in the
+chamber animation. The target transit state (`tstate`) is used to build a list
+of (possible) vessel moves that are sequenced after the model is updated.
 
 (((Main,main-functions,flowTarget)))
 
@@ -1148,8 +1177,8 @@ vessel moves that are sequenced after the model is updated.
 flowTarget : TransitState -> Maybe ChamberFlow
 flowTarget tstate =
     case tstate of
-        AChamberHigh -> Just ( ChamberFlow "Chamber-01" Low )
-        AChamberLow  -> Just ( ChamberFlow "Chamber-01" High )
+        AChamberHigh -> Just ( ChamberFlow "ChamberA" Low )
+        AChamberLow  -> Just ( ChamberFlow "ChamberA" High )
         _ -> Nothing
 ----
 
@@ -1184,7 +1213,7 @@ handleFlow model cmd =
     ( { model
         | chamberStates = model.chamberStates
             |> Animator.go ( Animator.millis 2000 )
-                ( setChamber "Chamber-01" cmd.name )
+                ( setChamber "ChamberA" cmd.name )
       }
     , Delay.sequence
         <| List.append chamberMoves
@@ -1335,7 +1364,7 @@ locks model =
                 ]
                 []
             , UI.chamber 0 40
-            , animChamber "Chamber-01" model 200
+            , animChamber "ChamberA" model 200
             , UI.chamber 400 80
             , animGate "Gate-M02" model 194 34
             , UI.hub 200 170

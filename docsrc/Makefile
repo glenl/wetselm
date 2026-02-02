@@ -87,7 +87,7 @@ ADOCTOR_OPTS =\
 	--attribute revdate=$(REVISIONDATE)\
 	--attribute umlet=$(HOME)/.local/bin/Umlet-15.0.0/umlet.jar\
 	--attribute source-highlighter=rouge \
-	--require asciidoctor-diagram\
+		--require asciidoctor-diagram\
 	$(NULL)
 
 $(DOCDIR)/%.pdf : %.adoc # $(IMAGEDIR)/classes.uxf
@@ -99,6 +99,7 @@ $(DOCDIR)/%.html : %.adoc
 	asciidoctor $(ADOCTOR_OPTS)\
 		--attribute iconfont-remote!\
 		--attribute docinfo=shared-head\
+		--attribute stylesheet=wetselm-stylesheet.css\
 		--out-file $@ $<
 
 .PHONY : all doc code clean
