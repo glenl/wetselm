@@ -236,8 +236,8 @@ init flags =
                     ]
       , chamberStates =
             Animator.init <|
-                Dict.fromList [ ( "ChamberA", High )
-                              , ( "ChamberB", High )
+                Dict.fromList [ ( "AChamber", High )
+                              , ( "BChamber", High )
                               ]
       , vesselStates = Animator.init Dict.empty
       , nats = nats
@@ -275,17 +275,6 @@ type ChamberState
 
 This application has a single animated chamber. Future versions may have
 multiple animated chambers so a type is defined
-
-(((Main,types,ChamberFlow)))
-
-[source,elm]
-----
-<<main-types>>=
-type alias ChamberFlow =
-    { chamberName : String
-    , state : ChamberState
-    }
-----
 
 This local function provides an association between a `ChamberState` and its
 depth in an SVG glyph. You can thank the SVG coordinate system for any
@@ -382,44 +371,6 @@ type alias TransitSequence =
     List TransitState
 ----
 
-.downStreamSequence
-A `downStreamSequence` is the sequence a vessel travelling downstream is
-expected to take. Notice how its final move is from the `InAChamberLow` state to
-the `LowerEntry` state. During animation, this will whisk the vessel image
-offstage right (i.e., it skips over the `AtLowerGate` milestone.)
-
-(((Main,literals,TransitSequence)))
-
-[source,elm]
-----
-<<main-literals>>=
-downStreamSequence : TransitSequence
-downStreamSequence =
-    [ UpperEntry
-    , UpperGate
-    , AChamberHigh
-    , AChamberLow
-    , LowerEntry
-    ]
-----
-
-.upStreamSequence
-For the `upStreamSequence`, note how the final move is from `AChamberHigh`
-to `UpperEntry` to whisk the vessel image offstage left.
-
-[source,elm]
-----
-<<main-literals>>=
-upStreamSequence : TransitSequence
-upStreamSequence =
-    [ LowerEntry
-    , LowerGate
-    , AChamberLow
-    , AChamberHigh
-    , UpperEntry
-    ]
-----
-
 ==== Vessel [[main-vessel]]
 
 A `Vessel` has a <<main-direction,Direction>> and a
@@ -500,17 +451,22 @@ meant to reside as a value in a <<main-vessel-dict,Vessel's dictionary>>.
 [source,elm]
 ----
 <<main-functions>>=
-newVessel : Util.Direction -> Vessel
-newVessel dir =
-    { direction = dir
-    , sequence =
-        case dir of
-            Util.Upstream ->
-                upStreamSequence
-
-            Util.Downstream ->
-                downStreamSequence
-    }
+newVessel : String -> Util.Direction -> Maybe Vessel
+newVessel popName dir =
+    let
+        makeVessel : VesselStrategy -> Vessel
+        makeVessel strategy =
+            { direction = dir
+            , sequence =
+                case dir of
+                    Util.Upstream ->
+                        strategy.upSequence
+                    Util.Downstream ->
+                        strategy.downSequence
+            }
+    in
+        Maybe.map makeVessel
+            <| Dict.get popName wetsPop
 ----
 
 
@@ -625,6 +581,8 @@ natsSubscriptions model =
         ]
 ----
 
+=== Updates [[main-updates]]
+
 ==== wrappedUpdate [[main-wrapped-update]]
 
 (((main,functions,wrappedUpdate)))
@@ -650,24 +608,12 @@ wrappedUpdate msg model =
     )
 ----
 
-=== update [[main-update]]
+==== update [[main-update]]
 
-
-==== Msg [[main-msg]]
-
-A core part of the Elm Architecture, the `Msg` type defines the actions that
-can change the state `model`. For each `Msg` there will be a corresponding
-<<main-update,update>> case. Literate programming allows us to itemize these
-messages next to their update functionality.
-
-(((Main,types,Msg)))
-
-[source,elm]
-----
-<<main-types>>=
-type Msg
-    <<main-messages>>
-----
+The `update` function translates a <<main-msg,Msg>> into an activity that is
+likely to cause a change in the <<main-view,view>>. For each `Msg` there will
+be a corresponding <<main-update,update>> case. Literate programming allows us
+to itemize these messages next to their update functionality.
 
 [source,elm]
 ----
@@ -678,9 +624,23 @@ update msg model =
         <<main-update-case>>
 ----
 
-
 NOTE: The return value includes a `Nats.Effect` which is a departure from the
-standard Elm architecture due to the wrapped update (which got us here.)
+standard Elm architecture due to the <<main-wrapped-update,wrapped update>>
+which got us here.
+
+==== Msg [[main-msg]]
+
+A core part of the Elm Architecture, the `Msg` type defines the actions that
+can change the state `model`.
+
+(((Main,types,Msg)))
+
+[source,elm]
+----
+<<main-types>>=
+type Msg
+    <<main-messages>>
+----
 
 
 ==== AnimationRuntimeStep [[main-animator-runtime-step]]
@@ -709,14 +669,14 @@ AnimationRuntimeStep tick ->
 
 ==== OnMenuSelect
 
-This is a generic message for when a menu is selected. It doesn't serve much
-use at this point and may be factored out in the future.
+This is a generic message for when a menu is selected. One use for this is to
+capture the selected population name.
+
 
 [source,elm]
 ----
 <<main-messages>>=
 | OnMenuSelect String String
-| MenuButtonMsg String (OUI.MenuButton.Msg String Msg)
 ----
 
 [source,elm]
@@ -729,7 +689,21 @@ OnMenuSelect _ menuEntry ->
       , Nats.Effect.none
       , Cmd.none
     )
+----
 
+==== MenuButtonMsg
+
+This is used to coordinate the menu activity state.
+
+[source,elm]
+----
+<<main-messages>>=
+| MenuButtonMsg String (OUI.MenuButton.Msg String Msg)
+----
+
+[source,elm]
+----
+<<main-update-case>>=
 MenuButtonMsg id menuMsg ->
     case id of
         "popmenu" ->
@@ -807,6 +781,9 @@ MoveVessel license millis ->
 
 
 ==== VesselFinished [[main-vessel-finished]]
+
+This state has the important role of keeping the active vessel dictionary in
+sync with the vessels present in the `Animator's` vessel states.
 
 [source,elm]
 ----
@@ -920,38 +897,46 @@ Following that,
 ----
 <<main-update-case>>=
 StartVessel direction ->
-    let
-        vessel : Vessel
-        vessel = newVessel direction
+    case newVessel model.wets_popname direction of
+        Nothing ->
+            ( { model
+                  | message = "Internal: Failed vessel start!"
+              }
+            , Nats.Effect.none
+            , Cmd.none
+            )
+        Just vessel ->
+            let
+                license : String
+                license =
+                    Util.newVesselName model.vesselCount
 
-        license : String
-        license = Util.newVesselName model.vesselCount
+                startState : TransitState
+                startState =
+                    vessel.sequence |> List.head |> Maybe.withDefault AtSea
 
-        startState : TransitState
-        startState =
-            vessel.sequence |> List.head |> Maybe.withDefault AtSea
-
-        startVessel : Dict Id TransitState
-        startVessel =
-            Animator.current model.vesselStates
-                |> Dict.insert license startState
-    in
-    ( { model
-        | vesselCount = model.vesselCount + 1
-        , vesselStates = model.vesselStates
-            |> Animator.go Animator.immediately startVessel
-        , activeVessels =
-            model.activeVessels
-                |> Dict.insert license
-                    { vessel | sequence = List.drop 1 vessel.sequence }
-        , message =
-            "Starting vessel \"" ++ license ++ "\""
-      }
-    , Nats.publish "Wets.1" <|
-        Wets.startVessel model.wets_popname license <|
-            Util.toString direction
-    , Delay.after 100 <| MoveVessel license 1000
-    )
+                startVessel : Dict Id TransitState
+                startVessel =
+                    Animator.current model.vesselStates
+                        |> Dict.insert license startState
+            in
+            ( { model
+                | vesselCount = model.vesselCount + 1
+                , vesselStates =
+                    model.vesselStates
+                        |> Animator.go Animator.immediately startVessel
+                , activeVessels =
+                    model.activeVessels
+                        |> Dict.insert license
+                            { vessel | sequence = List.drop 1 vessel.sequence }
+                , message =
+                    "Starting vessel \"" ++ license ++ "\""
+              }
+            , Nats.publish "Wets.1" <|
+                Wets.startVessel model.wets_popname license <|
+                    Util.toString direction
+            , Delay.after 100 <| MoveVessel license 1000
+            )
 ----
 
 
@@ -1169,17 +1154,19 @@ target states. The target chamber state (`cstate`) is used in the
 chamber animation. The target transit state (`tstate`) is used to build a list
 of (possible) vessel moves that are sequenced after the model is updated.
 
-(((Main,main-functions,flowTarget)))
+(((Main,main-functions,inChamberP)))
 
 [source,elm]
 ----
 <<main-functions>>=
-flowTarget : TransitState -> Maybe ChamberFlow
-flowTarget tstate =
+inChamberP : TransitState -> Bool
+inChamberP tstate =
     case tstate of
-        AChamberHigh -> Just ( ChamberFlow "ChamberA" Low )
-        AChamberLow  -> Just ( ChamberFlow "ChamberA" High )
-        _ -> Nothing
+        AChamberHigh -> True
+        AChamberLow  -> True
+        BChamberHigh -> True
+        BChamberLow  -> True
+        _ -> False
 ----
 
 The chamber move takes a fixed amount of time after which the response message
@@ -1195,25 +1182,19 @@ handleFlow model cmd =
         setChamber id sensor =
             Dict.insert id
                 (if sensor == "Sensor-F01" then Low else High)
-                (Animator.current model.chamberStates)
-
-        vmoves : Id -> Maybe ChamberFlow
-               -> List ( Int, Msg ) -> List (Int, Msg)
-        vmoves vid cflow vlist =
-            case cflow of
-                Nothing -> vlist
-                Just _ -> (0, MoveVessel vid 2000) :: vlist
+                <| Animator.current model.chamberStates
 
         chamberMoves : List ( Int, Msg )
         chamberMoves =
             Animator.current model.vesselStates
-                |> Dict.map (\_ v -> flowTarget v)
-                |> Dict.foldl vmoves []
+                |> Dict.filter (\_ v -> inChamberP v)
+                |> Dict.keys
+                |> List.map (\vid -> (0, MoveVessel vid 2000))
     in
     ( { model
         | chamberStates = model.chamberStates
             |> Animator.go ( Animator.millis 2000 )
-                ( setChamber "ChamberA" cmd.name )
+                ( setChamber "AChamber" cmd.name )
       }
     , Delay.sequence
         <| List.append chamberMoves
@@ -1364,7 +1345,7 @@ locks model =
                 ]
                 []
             , UI.chamber 0 40
-            , animChamber "ChamberA" model 200
+            , animChamber "AChamber" model 200
             , UI.chamber 400 80
             , animGate "Gate-M02" model 194 34
             , UI.hub 200 170
@@ -1741,6 +1722,51 @@ wetsOne =
     }
 ----
 
+==== wetsTwo [[main-wets-two]]
+
+For a vessel transiting a *Wets_2* canal lock, there is one more chamber to
+traverse. As in the *Wets_1* vessel path, the start and end states are
+off-stage to assist in the entry and exit animation.
+
+.Transit milestones for Wets_2 [[wets-2-vessel-path-diagram]]
+image::wets-2-vessel-path.svg[]
+
+(((main,literals,wetsTwo)))
+
+[source,elm]
+----
+<<main-literals>>=
+wetsTwo : VesselStrategy
+wetsTwo =
+    { upSequence =
+        [ LowerEntry
+        , LowerGate
+        , AChamberLow, AChamberHigh
+        , BChamberLow, BChamberHigh
+        , UpperEntry
+        ]
+    , downSequence =
+        [ UpperEntry
+        , UpperGate
+        , BChamberHigh , BChamberLow
+        , AChamberHigh , AChamberLow
+        , LowerEntry
+        ]
+    , toPosition =
+        \tstate ->
+            case tstate of
+                LowerEntry   -> Util.Position 650.0 80.0
+                LowerGate    -> Util.Position 500.0 80.0
+                AChamberLow  -> Util.Position 300.0 80.0
+                AChamberHigh -> Util.Position 300.0 40.0
+                BChamberLow  -> Util.Position 300.0 80.0
+                BChamberHigh -> Util.Position 300.0 40.0
+                UpperGate    -> Util.Position 100.0 40.0
+                UpperEntry   -> Util.Position -70.0 40.0
+                _ -> Util.Position 0.0 0.0
+    }
+----
+
 ==== wetsPop [[main-wets-pop]]
 
 This is a dictionary that hold <<main-vessel-strategy,strategies>> for all
@@ -1752,8 +1778,11 @@ supported WETS populations.
 ----
 <<main-literals>>=
 wetsPop : Dict String VesselStrategy
-wetsPop = Dict.fromList
-          [ ( "Wets_1", wetsOne )]
+wetsPop =
+    Dict.fromList
+        [ ( "Wets_1", wetsOne )
+        , ( "Wets_2", wetsTwo )
+        ]
 ----
 
 === Code Layout

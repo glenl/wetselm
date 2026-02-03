@@ -6,7 +6,7 @@ to a https://nats.io/[NATS] server. You are reading a
 <<literate-programming,literate programing document>>
 that contains both documentation and source code.
 
-The document product is a PDF containing both documentation and code.
+The document product is both HTML PDF files containing documentation and code.
 
 The generated code product -- `wetselm` -- is a web application in the
 https://elm-lang.org/[elm] programming language. Some details may be provided
