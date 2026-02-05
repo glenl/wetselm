@@ -15,13 +15,13 @@ focus is on the purpose and implementation of the application. You are
 encouraged to read the extensive https://guide.elm-lang.org/[Elm Guide] for
 more information.
 
+.The wetselm UI
 image::wetselm-ui.png[]
 
-`wetselm` presents a 2-gate canal lock system that interacts with a `WETS`
-executable information module to display the state of various entities
+`wetselm` presents a view of a canal lock system that interacts with a `WETS`
+executable information model to display the state of various entities
 represented in that model: gates, valves, chambers, and vessels. Communication
-is accomplished via a https://nats.io/[NATS] server.
-
+with the executable model is accomplished using https://nats.io/[NATS].
 
 .WETS messaging path using NATS
 [pikchr]
@@ -79,3 +79,16 @@ recognize for organizing the output of the code.
 
 TIP: In this document, final assembly of the code blocks is done in a section
 titled _Code Layout_.
+
+==== Elm tooling
+
+There is a presumption of some knowledge of the https://elm-lang.org/[Elm]
+language. This is a typical `Elm` application using typical tooling.
+
+elm-review::
+  This tool will perform a review of the code to check details like unused
+  imports, confusing idioms, and other things.
+
+elm-test::
+  There are a number of informal tests here that mainly have to do with
+  manipulating dictionaries.

@@ -14,8 +14,8 @@
 #
 #--
 AUTHOR = "Glen Larsen"
-VERSION = "1.0b"
-REVISIONDATE = "21 Jan 2026"
+VERSION = "2.0a"
+REVISIONDATE = "4 Feb 2026"
 PROJECT = wetselm
 
 SITEDIR = ../site

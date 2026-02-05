@@ -209,7 +209,7 @@ hub x y =
     Svg.circle
         [ SvgA.cx <| String.fromInt x
         , SvgA.cy <| String.fromInt y
-        , SvgA.r "8"
+        , SvgA.r "6"
         , SvgA.fill <| Color.toCssString Color.darkPurple
         ]
         []
@@ -231,10 +231,10 @@ achieve animation the _depth_ parameter is used to vary the height.
 [source,elm]
 ----
 <<ui-functions>>=
-chamber : Int -> Int -> Svg msg
-chamber xoffset depth =
+chamber : Int -> Int -> Int -> Svg msg
+chamber width xoffset depth =
     Svg.rect
-        [ SvgA.width "200"
+        [ SvgA.width <| String.fromInt width
         , SvgA.height <| String.fromInt <| 200 - depth
         , SvgA.x <| String.fromInt xoffset
         , SvgA.y <| String.fromInt depth
@@ -259,11 +259,11 @@ a parameter so it can be animated externally.
 [source,elm]
 ----
 <<ui-functions>>=
-gate : Int -> Int -> Float -> Svg msg
-gate x y opacity =
+gate : Int -> Int -> Int -> Float -> Svg msg
+gate x y height opacity =
     Svg.rect
         [ SvgA.width "12"
-        , SvgA.height "110"
+        , SvgA.height <| String.fromInt height
         , SvgA.x <| String.fromInt x
         , SvgA.y <| String.fromInt y
         , SvgA.fill <| Color.toCssString Color.darkBlue

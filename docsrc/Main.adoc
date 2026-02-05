@@ -17,7 +17,8 @@ import Time
 Here we import all of the
 https://package.elm-lang.org/packages/orus-io/elm-nats/latest/[elm-nats]
 packages needed for web socket communication.
-The `Random` package is here because it is used during <<main-init,init>>.
+The `Random` package is here because it is used in <<main-init,init>>
+when a subscription to NATS is started.
 
 [source,elm]
 ----
@@ -70,7 +71,6 @@ import Svg exposing (Svg)
 import Svg.Attributes as SvgA
 ----
 
-
 NOTE: Not all links for packages used in this application are annotated in
 this document. Please peruse the absolute source, the local `elm.json` file,
 for every package used. All elm packages can be found in the
@@ -78,11 +78,11 @@ https://package.elm-lang.org/[Elm package catalog].
 
 (((Main,port module)))
 
-Our application communicates with the `WETS` model using `NATS`, which is
-accomplished with web sockets. This is fairly well hidden from us but the
-first order of business is to indicate to `elm` that we will be expecting a
-port to be set up in the `index.html` file by declaring `Main` a port module.
-Note that only a single function is exposed by the `Main` module.
+`NATS` communiction in Elm is accomplished with web sockets. This is fairly
+well hidden from us but the first order of business is to indicate to `elm`
+that we will be expecting a port to be set up in the `index.html` file by
+declaring `Main` a port module. Note that only a single function is exposed by
+the `Main` module.
 
 (((Main,port module)))
 [source,elm]
@@ -122,7 +122,9 @@ import Util
 ----
 
 The main entry point is called `main` in this module and describes a jump
-table telling the elm run-time how the `Browser` is built.
+table telling the elm run-time how the
+https://package.elm-lang.org/packages/elm/browser/latest/[Browser]
+is to be built.
 
 [source,elm]
 ----
@@ -162,7 +164,7 @@ type alias Model =
     , actuatorStates : Animator.Timeline (Dict Id ActuatorState)
     , chamberStates : Animator.Timeline (Dict Id ChamberState)
     , vesselStates : Animator.Timeline (Dict Id TransitState)
-    , wets_popname : String
+    , wetsPopname : String
     , popState : OUI.MenuButton.State
     , activeVessels : VesselDict
     , vesselCount : Int
@@ -170,11 +172,24 @@ type alias Model =
     }
 ----
 
-For NATS communication we need the `nats`, `socket`, and `serverInfo`
-elements. The `actuator-`, `chamber-`, and `vessel-` `States` declare the
-timelines for animation. The `activeVessels` dictionary helps track the
-transit steps, `vesselCount` is instrumental in vessel naming, and `message`
-is used for displaying informational messages.
+* For NATS communication we need the `nats`, `socket`, and `serverInfo`
+elements.
+
+* The `actuator-`, `chamber-`, and `vessel-` `States` declare the
+timelines for animation.
+
+* `wetsPopname` contains the name of the translated information model's
+population.
+
+* `popState` is used by the pull-down menu to select and set the WETS
+population name.
+
+* The `activeVessels` dictionary helps track the
+transit steps.
+
+* `vesselCount` is instrumental in vessel naming
+
+* `message` is used for displaying informational messages.
 
 See the <<main-init,init>> function for how this `model` is initialized.
 
@@ -199,7 +214,7 @@ initializes all elements of the <<main-model,Model>>.
   population definitions (see the WETS documentation). Note that the naming
   here reflects the naming in the population as well.
 
-* The center chamber is animated with the `chamberStates` element.
+* Chambers are animated with the `chamberStates` element.
 
 * The vessel states are initialized to an empty dictionary.
 
@@ -236,14 +251,14 @@ init flags =
                     ]
       , chamberStates =
             Animator.init <|
-                Dict.fromList [ ( "AChamber", High )
+                Dict.fromList [ ( "AChamber", Low )
                               , ( "BChamber", High )
                               ]
       , vesselStates = Animator.init Dict.empty
       , nats = nats
       , socket = Nats.Socket.new "0" "ws://localhost:8087"
       , serverInfo = Nothing
-      , wets_popname = "Wets_1"
+      , wetsPopname = "Wets_1"
       , popState = OUI.MenuButton.init "popmenu"
       , vesselCount = 0
       , activeVessels = Dict.empty
@@ -273,23 +288,6 @@ type ChamberState
     | Low
 ----
 
-This application has a single animated chamber. Future versions may have
-multiple animated chambers so a type is defined
-
-This local function provides an association between a `ChamberState` and its
-depth in an SVG glyph. You can thank the SVG coordinate system for any
-confusion about the value for `High` being lower than the value for `Low`.
-
-[source,elm]
-----
-<<main-functions>>=
-chamberDepth : ChamberState -> Float
-chamberDepth cstate =
-    case cstate of
-        High -> 40.0
-        Low -> 80.0
-----
-
 
 ==== ActuatorState [[main-actuator-state]]
 
@@ -308,7 +306,8 @@ type ActuatorState
 
 .Id [[main-id]]
 
-An `Id` is an alias for a `String`.
+An `Id` is an alias for a `String` and is meant to delineate identifiers from
+plain strings.
 
 (((Main,types,Id)))
 
@@ -324,9 +323,10 @@ type alias Id =
 ==== TransitState [[main-transit-state]]
 
 A `TransitState` defines positional milestones in a vessels path through a
-transit lane. Each vessel will have a specific
-<<main-transit-sequence,transit sequence>>
-that it will traverse either down- or up- stream.
+transit lane. Each vessel will have a specific <<main-transit-sequence,transit
+sequence>> that it will traverse either down- or up- stream. The following
+diagram shows the vessel milestones for a *Wets_1* (two gates, two valves, one
+chamber) system.
 
 .Transit milestones in a vessel's path
 image::chamber-layout.svg[]
@@ -355,9 +355,7 @@ type TransitState
     | AtSea
 ----
 
-
 ==== TransitSequence [[main-transit-sequence]]
-
 
 This is a list of `TransitState` values and used to define a path along
 which a vessel is expected to travel.
@@ -402,6 +400,143 @@ type alias VesselDict =
     Dict Id Vessel
 ----
 
+==== VesselStrategy [[main-vessel-strategy]]
+
+WETS populations define the layout of a canal lock; a _VesselStrategy_
+contains the data that will define how a vessel moves through those locks. So
+a strategy for each supported population is required.
+
+upSequence:: An ordered list of <<main-transit-state,TransitStates>> that a
+vessel will traverse when going upstream.
+
+downSequence:: An ordered list of <<main-transit-state,TransitStates>> that a
+vessel will traverse when going downstream.
+
+toPosition:: A function to provide an XY position for each
+<<main-transit-state,TransitState>>. These are SVG positions within a SVG
+view. See <<main-anim-vessel,animVessel>> for how this is used.
+
+(((main,types,VesselStrategy)))
+
+[source,elm]
+----
+<<main-types>>=
+type alias VesselStrategy =
+    { upSequence : TransitSequence
+    , downSequence : TransitSequence
+    , toPosition : ( TransitState -> Util.Position )
+    }
+----
+
+.wetsOne [[main-wets-one]]
+
+(((main,Vessel strategies, Wets_1)))
+
+This literal provides the <<main-vessel-strategy,VesselStrategy>> instance for
+the WETS population named *Wets_1*.
+
+(((main,literals,wetsOne)))
+(((main,literals,Wets_1)))
+
+[source,elm]
+----
+<<main-literals>>=
+wetsOne : VesselStrategy
+wetsOne =
+    { upSequence =
+          [ LowerEntry
+          , LowerGate
+          , AChamberLow
+          , AChamberHigh
+          , UpperEntry
+          ]
+    , downSequence =
+        [ UpperEntry
+        , UpperGate
+        , AChamberHigh
+        , AChamberLow
+        , LowerEntry
+        ]
+    , toPosition =
+          (\tstate ->
+               case tstate of
+                   LowerEntry   -> Util.Position 650.0 80.0
+                   LowerGate    -> Util.Position 500.0 80.0
+                   AChamberLow  -> Util.Position 300.0 80.0
+                   AChamberHigh -> Util.Position 300.0 40.0
+                   UpperGate    -> Util.Position 100.0 40.0
+                   UpperEntry   -> Util.Position -70.0 40.0
+                   _ -> Util.Position 0.0 0.0
+              )
+    }
+----
+
+.wetsTwo [[main-wets-two]]
+
+(((main,Vessel strategies, Wets_2)))
+
+For a vessel transiting a *Wets_2* canal lock, there is one more chamber to
+traverse. As in the *Wets_1* vessel path, the start and end states are
+off-stage to assist in the entry and exit animation. The following diagram
+shows a downstream vessel path.
+
+.Transit milestones for Wets_2 [[wets-2-vessel-path-diagram]]
+image::wets-2-vessel-path.svg[]
+
+(((main,literals,wetsTwo)))
+
+[source,elm]
+----
+<<main-literals>>=
+wetsTwo : VesselStrategy
+wetsTwo =
+    { upSequence =
+        [ LowerEntry
+        , LowerGate
+        , AChamberLow, AChamberHigh
+        , BChamberLow, BChamberHigh
+        , UpperEntry
+        ]
+    , downSequence =
+        [ UpperEntry
+        , UpperGate
+        , BChamberHigh , BChamberLow
+        , AChamberHigh , AChamberLow
+        , LowerEntry
+        ]
+    , toPosition =
+        \tstate ->
+            case tstate of
+                LowerEntry   -> Util.Position 650.0 120.0
+                LowerGate    -> Util.Position 525.0 120.0
+                AChamberLow  -> Util.Position 375.0 120.0
+                AChamberHigh -> Util.Position 375.0 80.0
+                BChamberLow  -> Util.Position 225.0 80.0
+                BChamberHigh -> Util.Position 225.0 40.0
+                UpperGate    -> Util.Position  75.0 40.0
+                UpperEntry   -> Util.Position -70.0 40.0
+                _ -> Util.Position 0.0 0.0
+    }
+----
+
+==== wetsPop [[main-wets-pop]]
+
+This is a dictionary that hold <<main-vessel-strategy,strategies>> for all
+supported WETS populations.
+
+(((main,literals,wetsPop)))
+
+[source,elm]
+----
+<<main-literals>>=
+wetsPop : Dict String VesselStrategy
+wetsPop =
+    Dict.fromList
+        [ ( "Wets_1", wetsOne )
+        , ( "Wets_2", wetsTwo )
+        ]
+----
+
 ==== nextTransition [[next-transition]]
 
 The path of a Vessel is determined by its
@@ -444,7 +579,8 @@ adjustSequence license vdict =
 
 ==== newVessel [[main-new-vessel]]
 
-Construct a <<main-vessel,Vessel>> going in a specific direction. This is
+Construct a <<main-vessel,Vessel>> going in a specific direction with
+milestones defined by a specific <<main-vessel-strategy,vessel strategy>>. This is
 meant to reside as a value in a <<main-vessel-dict,Vessel's dictionary>>.
 
 (((Main,)))
@@ -508,10 +644,12 @@ animator =
 
 .subscriptions [[main-subscriptions]]
 
-There are two subscriptions to declare,
+There are several subscriptions to declare,
 
 * Messages arriving on the port will trigger a message to <<main-update,update>>.
 * Animation ticks on the timeline will trigger update as well.
+* One for the pop down menu to act correctly when a button is pressed outside
+  the pull-down.
 
 (((main,functions,subscriptions)))
 
@@ -531,6 +669,8 @@ subscriptions model =
 
 ==== natsConfig [[main-nats-config]]
 
+Configure the `Nats` module.
+
 (((main,functions,natsConfig)))
 
 [source,elm]
@@ -548,8 +688,10 @@ natsConfig =
         |> Nats.Config.withDebug False
 ----
 
-
 ==== receiveProg [[main-recieve-prog]]
+
+This maps a `Nats` subscription event to an `Elm` event, allowing us to handle
+data messages in the UI.
 
 (((main,functions,receiveProg)))
 
@@ -562,6 +704,11 @@ receiveProg natsMessage =
 ----
 
 ==== natsSubscriptions [[main-nats-subscriptions]]
+
+This subscription allows us to make the connection, which must match the
+configuration used by the `nats` server. We also subscribe to incoming
+`Wets.client` messages and direct them to the
+<<main-recieve-prog,recieveProg>> function for processing.
 
 (((main,functions,natsSubscriptions)))
 
@@ -676,16 +823,14 @@ capture the selected population name.
 [source,elm]
 ----
 <<main-messages>>=
-| OnMenuSelect String String
+| OnMenuSelect String
 ----
 
 [source,elm]
 ----
 <<main-update-case>>=
-OnMenuSelect _ menuEntry ->
-    ( { model
-          | wets_popname = menuEntry
-      }
+OnMenuSelect menuEntry ->
+    ( { model | wetsPopname = menuEntry}
       , Nats.Effect.none
       , Cmd.none
     )
@@ -810,6 +955,8 @@ VesselFinished id ->
 
 ==== VesselPassedGate [[main-vessel-passed-gate]]
 
+This update is called whenever a vessel has been directed to move past a gate.
+
 [source,elm]
 ----
 <<main-messages>>=
@@ -897,7 +1044,7 @@ Following that,
 ----
 <<main-update-case>>=
 StartVessel direction ->
-    case newVessel model.wets_popname direction of
+    case newVessel model.wetsPopname direction of
         Nothing ->
             ( { model
                   | message = "Internal: Failed vessel start!"
@@ -933,7 +1080,7 @@ StartVessel direction ->
                     "Starting vessel \"" ++ license ++ "\""
               }
             , Nats.publish "Wets.1" <|
-                Wets.startVessel model.wets_popname license <|
+                Wets.startVessel model.wetsPopname license <|
                     Util.toString direction
             , Delay.after 100 <| MoveVessel license 1000
             )
@@ -965,8 +1112,6 @@ NatsMsg natsMsg ->
     )
 ----
 
-
-
 ==== OnSocketEvent
 
 [source,elm]
@@ -976,7 +1121,8 @@ NatsMsg natsMsg ->
 ----
 
 Update the model's `serverInfo` structure on a socket event.
-There are a number of events here that are ignored.
+There are a number of details in the `info` structure that might be
+interesting to the user.
 
 [source,elm]
 ----
@@ -1109,7 +1255,7 @@ handleVessel model cmd =
 import Delay
 ----
 
-==== handleFlow [[main-handle-flow]]
+==== Handling flow [[main-handling-flow]]
 
 (((main,functions,handleFlow)))
 
@@ -1129,30 +1275,33 @@ image::wets-2-layout.svg[role=center]
 The upstream and downstream reactions are similar to *Wets_1* but special care
 must be taken with the center chamber.
 
-.Flow Sensor reactions
+.Flow Sensor reactions [[main-flow-sensor-reactions]]
 [cols="1,2,2,1",options="header",width="80%",role=center]
 |===
-| Population | Flow Sensor | Affected Chamber | Direction
+| Population | Flow Sensor | Affected Chamber | State
 
 .2+| Wets_1
-| Sensor-F01 | ChamberA | Down
+| Sensor-F01 | AChamber | Low
 
-| Sensor-F02 | ChamberA | Up
+| Sensor-F02 | AChamber | High
 
 .4+| Wets_2
-| Sensor-F03 | ChamberA | Down
+| Sensor-F03 | AChamber | Low
 
 .2+|Sensor-F04
-| ChamberA | Down
-| ChamberB | Up
+| AChamber | High
+| BChamber | Low
 
-| Sensor-F05 | ChamberB | Up
+| Sensor-F05 | BChamber | High
 |===
 
 The name of the sensor can be used to derive the target `Chamber` and its
 target states. The target chamber state (`cstate`) is used in the
 chamber animation. The target transit state (`tstate`) is used to build a list
-of (possible) vessel moves that are sequenced after the model is updated.
+of possible vessel moves that are sequenced after the model is updated.
+
+.inChamberP [[main-inChamber-p]]
+This is a predicate that returns true if a transit state is within a chamber.
 
 (((Main,main-functions,inChamberP)))
 
@@ -1169,8 +1318,58 @@ inChamberP tstate =
         _ -> False
 ----
 
-The chamber move takes a fixed amount of time after which the response message
-is queued to run.
+.chamberMoves [[main-chamber-moves]]
+
+Given a sensor identifier, return a list of chamber states.
+Refer to the
+<<main-flow-sensor-reactions,flow reactions table>> for details on the
+contents of these lists.
+
+[source,elm]
+----
+<<main-functions>>=
+chamberMoves : String -> Dict Id ChamberState
+chamberMoves sensor =
+    Dict.fromList <|
+        case sensor of
+            "Sensor-F01" ->
+                [ ( "AChamber", Low ) ]
+
+            "Sensor-F02" ->
+                [ ( "AChamber", High ) ]
+
+            "Sensor-F03" ->
+                [ ( "AChamber", Low ) ]
+
+            "Sensor-F04" ->
+                [ ( "AChamber", High )
+                , ( "BChamber", Low )
+                ]
+
+            "Sensor-F05" ->
+                [ ( "BChamber", High ) ]
+
+            _ ->
+                []
+----
+
+.handleFlow [[main-handle-flow]]
+
+Once a valve has been open it is necessary to inform the WETS model that flow
+has equalized between the two bodies of water on either side of the gate. This
+function takes into account,
+
+* There may or may not be vessels in the chambers.
+
+* Chambers typically fill slowly so these should be timed longer than simple
+  moves through a gate.
+
+NOTE: This function uses a _union_ of two dictionaries to update the
+`chamberStates` dictionary. This makes it trivial to update more than one
+chamber in a single call of flow handling.
+
+
+(((Main,functions,handleFlow)))
 
 [source,elm]
 ----
@@ -1178,32 +1377,34 @@ is queued to run.
 handleFlow : Model -> Wets.FlowCommand -> ( Model, Cmd Msg )
 handleFlow model cmd =
     let
-        setChamber : Id -> String -> Dict Id ChamberState
-        setChamber id sensor =
-            Dict.insert id
-                (if sensor == "Sensor-F01" then Low else High)
-                <| Animator.current model.chamberStates
+        updateChambers : Id -> Dict Id ChamberState
+        updateChambers sensor =
+            Animator.current model.chamberStates
+                |> Dict.union (chamberMoves sensor)
 
-        chamberMoves : List ( Int, Msg )
-        chamberMoves =
+        vMoves : List ( Int, Msg )
+        vMoves =
             Animator.current model.vesselStates
                 |> Dict.filter (\_ v -> inChamberP v)
                 |> Dict.keys
-                |> List.map (\vid -> (0, MoveVessel vid 2000))
+                |> List.map (\vid -> ( 0, MoveVessel vid 2000 ))
     in
     ( { model
-        | chamberStates = model.chamberStates
-            |> Animator.go ( Animator.millis 2000 )
-                ( setChamber "AChamber" cmd.name )
+        | chamberStates =
+            model.chamberStates
+                |> Animator.go (Animator.millis 2000)
+                    (updateChambers cmd.name)
       }
-    , Delay.sequence
-        <| List.append chamberMoves
-        <| List.singleton (2000, FlowComplete cmd.name)
+    , Delay.sequence <|
+        List.append vMoves <|
+            List.singleton ( 2000, FlowComplete cmd.name )
     )
 ----
 
 
 ==== handleMotor [[main-handle-motor]]
+
+Valve and gate motors are both handled here.
 
 (((main,functions,handleMotor)))
 
@@ -1323,6 +1524,10 @@ up within that.
 * The valve is a hub and vane combination in which the vane is animated.
 * Finally the vessels are animated on top of all that.
 
+NOTE: When *Wets_2* support was added, the construction of the lock was
+separated into two lists of lock graphics to make switching between one and
+the other simpler.
+
 (((main,functions,locks)))
 
 [source,elm]
@@ -1330,41 +1535,96 @@ up within that.
 <<main-functions>>=
 locks : Model -> E.Element msg
 locks model =
+    let
+        lock =
+            case model.wetsPopname of
+                "Wets_1" ->
+                    lockOne model
+                "Wets_2" ->
+                    lockTwo model
+                _ -> []
+    in
     Svg.svg
         [ SvgA.viewBox "0 0 600 200"
         , SvgA.width "600"
         , SvgA.height "200"
         ]
-        (List.append
-            [ Svg.rect
-                [ SvgA.width "600"
-                , SvgA.height "200"
-                , SvgA.x "0"
-                , SvgA.y "0"
-                , SvgA.fill <| Color.toCssString Color.lightGray
-                ]
-                []
-            , UI.chamber 0 40
-            , animChamber "AChamber" model 200
-            , UI.chamber 400 80
-            , animGate "Gate-M02" model 194 34
-            , UI.hub 200 170
-            , animVane "Valve-M02" model 200 170
-            , animGate "Gate-M01" model 394 34
-            , UI.hub 400 170
-            , animVane "Valve-M01" model 400 170
-            ]
-         <| allVessels model
-        )
+        (List.concat [
+             [ Svg.rect
+                   [ SvgA.width "600"
+                   , SvgA.height "200"
+                   , SvgA.x "0"
+                   , SvgA.y "0"
+                   , SvgA.fill <| Color.toCssString Color.lightGray
+                   ]
+                   []
+             ]
+            , lock
+            , allVessels model
+            ])
         |> E.html
 ----
 
+.lockOne, a  lock for Wets_1 [[main-lockOne]]
 
+(((Main,functions,lockOne)))
+
+[source,elm]
+----
+<<main-functions>>=
+lockOne : Model -> List (Svg msg)
+lockOne model =
+    [ UI.chamber 200 0 40
+    , animChamber "AChamber" model 200 200
+    , UI.chamber 200 400 80
+    , animGate "Gate-M02" model 194 34 90
+    , UI.hub 200 148
+    , animVane "Valve-M02" model 200 148
+    , animGate "Gate-M01" model 394 34 90
+    , UI.hub 400 148
+    , animVane "Valve-M01" model 400 148
+    , Svg.polygon
+          [ SvgA.points "0,150 200,170 600,170 600,200 0,200"
+          , SvgA.fill <| Color.toCssString Color.darkBrown
+          ]
+          []
+    ]
+----
+
+.lockTwo, a lock for Wets_2 [[main-lockTwo]]
+
+(((Main,functions,lockTwo)))
+
+[source,elm]
+----
+<<main-functions>>=
+lockTwo : Model -> List (Svg msg)
+lockTwo model =
+    [ UI.chamber 150 0 40
+    , animChamber "BChamber" model 150 150
+    , animChamber "AChamber" model 150 300
+    , UI.chamber 450 300 120
+    , animGate "Gate-M05" model 144 30 90
+    , UI.hub 150 146
+    , animVane "Valve-M05" model 150 146
+    , animGate "Gate-M04" model 294 30 110
+    , UI.hub 300 165
+    , animVane "Valve-M04" model 300 165
+    , animGate "Gate-M03" model 444 60 90
+    , UI.hub 450 175
+    , animVane "Valve-M03" model 450 175
+    , Svg.polygon
+          [ SvgA.points "0,150 150,170 300,188 450,200 0,200"
+          , SvgA.fill <| Color.toCssString Color.darkBrown
+          ]
+          []
+    ]
+----
 
 ==== startPanel [[main-start-panel]]
 
 This forms the start controls that can introduce vessels into the system.
-Keypresses are directed to the <<main-start-vessel,StartVessel>> message.
+Keypresses are directed to the <<main-start-vessel,StartVessel>> command.
 
 (((main,functions,startPanel)))
 
@@ -1405,7 +1665,8 @@ startPanel =
 
 ==== infoPanel [[main-info-panel]]
 
-This shows the state of the NATS connection.
+This shows the state of the NATS connection. This has the potential of being
+more elaborate but a simple green/red display is used here.
 
 (((main,functions,infoPanel)))
 
@@ -1471,16 +1732,6 @@ closed.
 Only the vane of the valve is animated. This makes a quarter circle rotation
 to represent open (π/2) or closed (0).
 
-[source,elm]
-----
-<<main-functions>>=
-valveValue : ActuatorState -> Float
-valveValue astate =
-    case astate of
-        Opened -> pi / 2.0
-        Closed -> 0.0
-----
-
 This animates a single vane for the actuator with the given `Id`.
 
 (((main,functions,animVane)))
@@ -1490,6 +1741,13 @@ This animates a single vane for the actuator with the given `Id`.
 <<main-functions>>=
 animVane : Id -> Model -> Int -> Int -> Svg msg
 animVane id model x y =
+    let
+        valveValue : ActuatorState -> Float
+        valveValue astate =
+            case astate of
+                Opened -> pi / 2.0
+                Closed -> 0.0
+    in
     UI.vane x y
     <| Animator.linear model.actuatorStates <|
         \actuatorStates ->
@@ -1518,19 +1776,42 @@ appropriate direction.
 
 (((main,functions,animChamber)))
 
+This local function provides an association between a `ChamberState` and its
+depth in an SVG glyph. You can thank the SVG coordinate system for any
+confusion about the value for `High` being lower than the value for `Low`.
+
+NOTE: This got slightly more complex when an additional chamber was supported
+for *Wets_2*.
+
 [source,elm]
 ----
 <<main-functions>>=
-animChamber : Id -> Model -> Int -> Svg msg
-animChamber id model xoffset =
-    UI.chamber xoffset
-    <| round
-    <| Animator.linear model.chamberStates <|
-         \chamberStates ->
-             Animator.at <|
-                 case Dict.get id chamberStates of
-                     Just cs -> chamberDepth cs
-                     Nothing -> 0.0
+animChamber : Id -> Model -> Int -> Int -> Svg msg
+animChamber id model width xoffset =
+    let
+        chamberDepth : ChamberState -> Float
+        chamberDepth cstate =
+            case cstate of
+                High -> 40.0
+                Low -> 80.0
+        ySurface : Float
+        ySurface =
+            if model.wetsPopname == "Wets_2" && id == "AChamber"
+            then
+                40.0
+            else
+                0.0
+    in
+    UI.chamber width xoffset <|
+        round <|
+            Animator.linear model.chamberStates <|
+                \chamberStates ->
+                    Animator.at <|
+                        case Dict.get id chamberStates of
+                            Just cs ->
+                                ySurface + (chamberDepth cs)
+                            Nothing ->
+                                0.0
 ----
 
 
@@ -1541,24 +1822,21 @@ and the vessel will be hidden behind it as it passes through.
 Here the opacity of the gate is animated so it transitions from
 fully opaque to almost transparent.
 
-[source,elm]
-----
-<<main-functions>>=
-gateOpacity : ActuatorState -> Float
-gateOpacity astate =
-    case astate of
-        Opened -> 0.25
-        Closed -> 1.0
-----
-
 (((main,functions,animGate)))
 
 [source,elm]
 ----
 <<main-functions>>=
-animGate : Id -> Model -> Int -> Int -> Svg msg
-animGate id model x y =
-    UI.gate x y
+animGate : Id -> Model -> Int -> Int -> Int -> Svg msg
+animGate id model x y height =
+    let
+        gateOpacity : ActuatorState -> Float
+        gateOpacity astate =
+            case astate of
+                Opened -> 0.25
+                Closed -> 1.0
+    in
+    UI.gate x y height
     <| Animator.linear model.actuatorStates <|
         \actuatorStates ->
             Animator.at <|
@@ -1582,7 +1860,7 @@ changing water level, this easing is zeroed in `y` to force a linear motion.
 <<main-functions>>=
 animVessel : Id -> Model -> Util.Direction -> Svg msg
 animVessel id model direction =
-    case Dict.get model.wets_popname wetsPop of
+    case Dict.get model.wetsPopname wetsPop of
         Nothing ->
             Svg.text ""
         Just strategy ->
@@ -1633,15 +1911,15 @@ wetsMenu : Model -> E.Element Msg
 wetsMenu model =
     OUI.MenuButton.new
         (MenuButtonMsg "popmenu")
-        (OnMenuSelect "popmenu")
+        (OnMenuSelect)
         (Button.new
-             model.wets_popname |> Button.outlinedButton
+             model.wetsPopname |> Button.outlinedButton
         )
         (OUI.Menu.new identity
              |> OUI.Menu.addItems [ "Wets_1", "Wets_2" ]
              |> OUI.Menu.withIcon
                  (\i ->
-                     if i == model.wets_popname then
+                     if i == model.wetsPopname then
                          Just Icon.check
                      else
                          Nothing
@@ -1650,139 +1928,6 @@ wetsMenu model =
         |> OUI.MenuButton.withOpenCloseIcons
            Icon.arrow_drop_down Icon.arrow_drop_up
         |> Material.menuButton UI.theme model.popState []
-----
-
-
-==== VesselStrategy [[main-vessel-strategy]]
-
-WETS populations define the layout of a canal lock; a _VesselStrategy_
-contains the data that will define how a vessel moves through those locks. So
-a strategy for each supported population is required.
-
-upSequence:: An ordered list of <<main-transit-state,TransitStates>> that a
-vessel will traverse when going upstream.
-
-downSequence:: An ordered list of <<main-transit-state,TransitStates>> that a
-vessel will traverse when going downstream.
-
-toPosition:: A function to provide an XY position for each
-<<main-transit-state,TransitState>>. These are SVG positions within a SVG
-view. See <<main-anim-vessel,animVessel>> for how this is used.
-
-(((main,types,VesselStrategy)))
-
-[source,elm]
-----
-<<main-types>>=
-type alias VesselStrategy =
-    { upSequence : TransitSequence
-    , downSequence : TransitSequence
-    , toPosition : ( TransitState -> Util.Position )
-    }
-----
-
-.wetsOne
-
-This literal provides the <<main-vessel-strategy,VesselStrategy>> instance for
-the WETS population named *Wets_1*.
-
-(((main,literals,wetsOne)))
-(((main,literals,Wets_1)))
-
-[source,elm]
-----
-<<main-literals>>=
-wetsOne : VesselStrategy
-wetsOne =
-    { upSequence =
-          [ LowerEntry
-          , LowerGate
-          , AChamberLow
-          , AChamberHigh
-          , UpperEntry
-          ]
-    , downSequence =
-        [ UpperEntry
-        , UpperGate
-        , AChamberHigh
-        , AChamberLow
-        , LowerEntry
-        ]
-    , toPosition =
-          (\tstate ->
-               case tstate of
-                   LowerEntry   -> Util.Position 650.0 80.0
-                   LowerGate    -> Util.Position 500.0 80.0
-                   AChamberLow  -> Util.Position 300.0 80.0
-                   AChamberHigh -> Util.Position 300.0 40.0
-                   UpperGate    -> Util.Position 100.0 40.0
-                   UpperEntry   -> Util.Position -70.0 40.0
-                   _ -> Util.Position 0.0 0.0
-              )
-    }
-----
-
-==== wetsTwo [[main-wets-two]]
-
-For a vessel transiting a *Wets_2* canal lock, there is one more chamber to
-traverse. As in the *Wets_1* vessel path, the start and end states are
-off-stage to assist in the entry and exit animation.
-
-.Transit milestones for Wets_2 [[wets-2-vessel-path-diagram]]
-image::wets-2-vessel-path.svg[]
-
-(((main,literals,wetsTwo)))
-
-[source,elm]
-----
-<<main-literals>>=
-wetsTwo : VesselStrategy
-wetsTwo =
-    { upSequence =
-        [ LowerEntry
-        , LowerGate
-        , AChamberLow, AChamberHigh
-        , BChamberLow, BChamberHigh
-        , UpperEntry
-        ]
-    , downSequence =
-        [ UpperEntry
-        , UpperGate
-        , BChamberHigh , BChamberLow
-        , AChamberHigh , AChamberLow
-        , LowerEntry
-        ]
-    , toPosition =
-        \tstate ->
-            case tstate of
-                LowerEntry   -> Util.Position 650.0 80.0
-                LowerGate    -> Util.Position 500.0 80.0
-                AChamberLow  -> Util.Position 300.0 80.0
-                AChamberHigh -> Util.Position 300.0 40.0
-                BChamberLow  -> Util.Position 300.0 80.0
-                BChamberHigh -> Util.Position 300.0 40.0
-                UpperGate    -> Util.Position 100.0 40.0
-                UpperEntry   -> Util.Position -70.0 40.0
-                _ -> Util.Position 0.0 0.0
-    }
-----
-
-==== wetsPop [[main-wets-pop]]
-
-This is a dictionary that hold <<main-vessel-strategy,strategies>> for all
-supported WETS populations.
-
-(((main,literals,wetsPop)))
-
-[source,elm]
-----
-<<main-literals>>=
-wetsPop : Dict String VesselStrategy
-wetsPop =
-    Dict.fromList
-        [ ( "Wets_1", wetsOne )
-        , ( "Wets_2", wetsTwo )
-        ]
 ----
 
 === Code Layout
