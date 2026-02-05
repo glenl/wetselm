@@ -251,7 +251,7 @@ init flags =
                     ]
       , chamberStates =
             Animator.init <|
-                Dict.fromList [ ( "AChamber", Low )
+                Dict.fromList [ ( "AChamber", High )
                               , ( "BChamber", High )
                               ]
       , vesselStates = Animator.init Dict.empty

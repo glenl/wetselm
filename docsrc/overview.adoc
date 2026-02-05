@@ -85,6 +85,10 @@ titled _Code Layout_.
 There is a presumption of some knowledge of the https://elm-lang.org/[Elm]
 language. This is a typical `Elm` application using typical tooling.
 
+elm-format::
+  Without this formatting tool the blocks of code from this literate
+  programming document would look like one big pile of text.
+
 elm-review::
   This tool will perform a review of the code to check details like unused
   imports, confusing idioms, and other things.
@@ -92,3 +96,12 @@ elm-review::
 elm-test::
   There are a number of informal tests here that mainly have to do with
   manipulating dictionaries.
+
+Both `elm-test` and `elm-review` should be run from the top of the elm source
+tree, i.e., the folder in which `elm.json` resides.
+
+WARNING: If your code is incorrect within the document, `elm-format` will fail
+to format and it will result in a zero-length file. It will report a line
+number but you will have lost the reference. If it is not apparent where the
+problem is you may have to untangle the document manually or modify the
+Makefile to skip the formatting step.
